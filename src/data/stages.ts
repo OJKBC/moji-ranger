@@ -29,7 +29,7 @@ export const STAGES: Stage[] = [
       purifyStepsPerEnemy: 1,
       bossPurifySteps: 4,
       choiceCount: 5,
-      rideDistance: 200,
+      rideDistance: 50,
       // 習わせたい順。習得（correct2回以上）に応じて先頭から徐々に開放される
       letterPool: ['あ', 'い', 'う', 'お', 'ん', 'め', 'ぬ', 'ね', 'れ', 'わ', 'さ', 'ち'],
       poolStart: 5,

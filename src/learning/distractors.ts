@@ -28,6 +28,25 @@ export const CONFUSABLES: Record<string, string[]> = {
   'え': ['ん', 'そ'],
 }
 
+/**
+ * 「音」が似ていて、読み上げだけでは判別しづらい文字のグループ。
+ * 出題が音声のみのため、ターゲットと同じグループの文字は選択肢に出さない
+ * （例: 「う」を狙うとき「ん」「ぬ」が選択肢にあると、正しく聞き取れていても迷う）。
+ */
+const SOUND_GROUPS: string[][] = [
+  ['う', 'ん', 'む', 'ぬ', 'ふ'],
+  ['え', 'ね', 'れ', 'め', 'へ'],
+  ['し', 'ち', 'ひ'],
+  ['い', 'り'],
+  ['ま', 'な'],
+  ['お', 'を'],
+]
+
+/** target と音が似ていて聞き分けにくい文字か */
+export function isSoundSimilar(target: string, candidate: string): boolean {
+  return SOUND_GROUPS.some(group => group.includes(target) && group.includes(candidate))
+}
+
 /** 見た目がはっきり区別できる、選択肢の母集団 */
 const BASE_POOL = [
   'あ', 'い', 'う', 'え', 'お', 'か', 'き', 'く', 'け', 'こ',
@@ -38,17 +57,18 @@ const BASE_POOL = [
 
 /**
  * ターゲット以外の選択肢を count 個選ぶ。
- * useConfusables=true なら似た文字を優先的に（最大2つ）混ぜる。
+ * - ターゲットと「音が似ている」文字は除外する（出題は音声のみのため）
+ * - useConfusables=true なら「形が似ている」文字を優先的に（最大2つ）混ぜる
  */
 export function pickDistractors(target: string, count: number, useConfusables: boolean): string[] {
   const picked: string[] = []
   if (useConfusables) {
     for (const c of CONFUSABLES[target] ?? []) {
       if (picked.length >= Math.min(2, count)) break
-      if (c !== target && !picked.includes(c)) picked.push(c)
+      if (c !== target && !picked.includes(c) && !isSoundSimilar(target, c)) picked.push(c)
     }
   }
-  const rest = BASE_POOL.filter(l => l !== target && !picked.includes(l))
+  const rest = BASE_POOL.filter(l => l !== target && !picked.includes(l) && !isSoundSimilar(target, l))
   // Fisher–Yates シャッフル
   for (let i = rest.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))

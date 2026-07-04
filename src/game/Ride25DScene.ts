@@ -350,14 +350,182 @@ export class Ride25DScene extends Phaser.Scene {
         canvas.refresh()
       }
     }
+    this.makePropTextures()
     this.makeHandTexture('hand-r', false)
     this.makeHandTexture('hand-l', true)
   }
 
-  /** かわいい手袋の手を描く。mirror=true は左手（ひらいた手） */
+  /** 公園の置き物（噴水・ベンチ・花壇・遊具）— 参考画像の公園デザイン */
+  private makePropTextures(): void {
+    if (!this.textures.exists('fountain')) {
+      const canvas = this.textures.createCanvas('fountain', 200, 210)
+      if (canvas) {
+        const ctx = canvas.getContext()
+        // 足元の光
+        const glow = ctx.createRadialGradient(100, 160, 10, 100, 160, 90)
+        glow.addColorStop(0, 'rgba(89,224,242,0.35)')
+        glow.addColorStop(1, 'rgba(89,224,242,0)')
+        ctx.fillStyle = glow
+        ctx.fillRect(0, 70, 200, 140)
+        // 土台
+        ctx.fillStyle = '#4a3d80'
+        ctx.beginPath()
+        ctx.ellipse(100, 190, 88, 16, 0, 0, Math.PI * 2)
+        ctx.fill()
+        // 下段の水盤
+        ctx.fillStyle = '#5647a0'
+        ctx.beginPath()
+        ctx.roundRect(28, 150, 144, 32, 14)
+        ctx.fill()
+        ctx.fillStyle = '#7fe8ff'
+        ctx.beginPath()
+        ctx.ellipse(100, 152, 74, 17, 0, 0, Math.PI * 2)
+        ctx.fill()
+        // 中段
+        ctx.fillStyle = '#5647a0'
+        ctx.fillRect(88, 112, 24, 40)
+        ctx.beginPath()
+        ctx.roundRect(56, 100, 88, 20, 10)
+        ctx.fill()
+        ctx.fillStyle = '#9df0ff'
+        ctx.beginPath()
+        ctx.ellipse(100, 101, 46, 11, 0, 0, Math.PI * 2)
+        ctx.fill()
+        // 上段
+        ctx.fillStyle = '#5647a0'
+        ctx.fillRect(94, 74, 12, 28)
+        ctx.fillStyle = '#c8f7ff'
+        ctx.beginPath()
+        ctx.ellipse(100, 72, 26, 8, 0, 0, Math.PI * 2)
+        ctx.fill()
+        // 噴き上がる水
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+        ctx.lineWidth = 4
+        ctx.lineCap = 'round'
+        for (const [dx, top] of [[-14, 46], [0, 36], [14, 46]] as const) {
+          ctx.beginPath()
+          ctx.moveTo(100, 66)
+          ctx.quadraticCurveTo(100 + dx, top, 100 + dx * 2, 64)
+          ctx.stroke()
+        }
+        ctx.fillStyle = 'rgba(255,255,255,0.9)'
+        for (const [px, py] of [[84, 52], [116, 52], [100, 32]] as const) {
+          ctx.beginPath()
+          ctx.arc(px, py, 3, 0, Math.PI * 2)
+          ctx.fill()
+        }
+        canvas.refresh()
+      }
+    }
+    if (!this.textures.exists('bench')) {
+      const canvas = this.textures.createCanvas('bench', 140, 90)
+      if (canvas) {
+        const ctx = canvas.getContext()
+        ctx.fillStyle = '#4a3d80'
+        ctx.fillRect(22, 58, 10, 30)
+        ctx.fillRect(108, 58, 10, 30)
+        ctx.fillStyle = '#8a6ac2'
+        ctx.beginPath()
+        ctx.roundRect(10, 46, 120, 14, 7)
+        ctx.fill()
+        ctx.beginPath()
+        ctx.roundRect(14, 12, 112, 12, 6)
+        ctx.fill()
+        ctx.fillStyle = '#6a51a8'
+        ctx.fillRect(24, 22, 8, 26)
+        ctx.fillRect(108, 22, 8, 26)
+        ctx.fillStyle = 'rgba(255,226,138,0.5)'
+        ctx.beginPath()
+        ctx.roundRect(14, 48, 112, 5, 3)
+        ctx.fill()
+        canvas.refresh()
+      }
+    }
+    if (!this.textures.exists('bush')) {
+      const canvas = this.textures.createCanvas('bush', 130, 100)
+      if (canvas) {
+        const ctx = canvas.getContext()
+        ctx.fillStyle = '#2f7a40'
+        for (const [cx, cy, r] of [[42, 66, 30], [90, 68, 27], [66, 50, 32]] as const) {
+          ctx.beginPath()
+          ctx.arc(cx, cy, r + 3, 0, Math.PI * 2)
+          ctx.fill()
+        }
+        ctx.fillStyle = '#3f9e52'
+        for (const [cx, cy, r] of [[42, 66, 30], [90, 68, 27], [66, 50, 32]] as const) {
+          ctx.beginPath()
+          ctx.arc(cx, cy, r, 0, Math.PI * 2)
+          ctx.fill()
+        }
+        ctx.fillStyle = 'rgba(120,220,140,0.5)'
+        ctx.beginPath()
+        ctx.arc(56, 42, 16, 0, Math.PI * 2)
+        ctx.fill()
+        // 花
+        for (const [fx, fy, fc] of [[36, 58, '#ff8fd0'], [70, 38, '#ffd94d'], [96, 60, '#ff8fd0'], [58, 72, '#ffd94d'], [84, 78, '#ff8fd0']] as const) {
+          ctx.fillStyle = fc
+          ctx.beginPath()
+          ctx.arc(fx, fy, 5, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.fillStyle = '#ffffff'
+          ctx.beginPath()
+          ctx.arc(fx, fy, 2, 0, Math.PI * 2)
+          ctx.fill()
+        }
+        canvas.refresh()
+      }
+    }
+    if (!this.textures.exists('slide')) {
+      const canvas = this.textures.createCanvas('slide', 180, 150)
+      if (canvas) {
+        const ctx = canvas.getContext()
+        // タワー
+        ctx.fillStyle = '#3da9ff'
+        ctx.beginPath()
+        ctx.roundRect(22, 46, 54, 96, 10)
+        ctx.fill()
+        ctx.fillStyle = '#2a7fd0'
+        ctx.beginPath()
+        ctx.roundRect(34, 66, 30, 34, 8)
+        ctx.fill()
+        // 屋根
+        ctx.fillStyle = '#ffd94d'
+        ctx.beginPath()
+        ctx.arc(49, 46, 30, Math.PI, 0)
+        ctx.fill()
+        ctx.fillStyle = '#ff8fd0'
+        ctx.beginPath()
+        ctx.arc(49, 16, 6, 0, Math.PI * 2)
+        ctx.fill()
+        // すべり台
+        ctx.fillStyle = '#e0518f'
+        ctx.beginPath()
+        ctx.moveTo(74, 66)
+        ctx.lineTo(168, 128)
+        ctx.lineTo(168, 146)
+        ctx.lineTo(74, 92)
+        ctx.closePath()
+        ctx.fill()
+        ctx.fillStyle = '#ff6bb5'
+        ctx.beginPath()
+        ctx.moveTo(74, 70)
+        ctx.lineTo(164, 130)
+        ctx.lineTo(164, 140)
+        ctx.lineTo(74, 86)
+        ctx.closePath()
+        ctx.fill()
+        canvas.refresh()
+      }
+    }
+  }
+
+  /**
+   * 参考画像デザインの腕を描く: 太い赤の袖＋金の腕輪（光るボタン列）＋
+   * 光るウォッチ＋青い手袋（ハニカム模様）。mirror=true は左手（ひらいた手）。
+   */
   private makeHandTexture(key: string, mirror: boolean): void {
     if (this.textures.exists(key)) return
-    const w = 240, h = 300
+    const w = 260, h = 340
     const canvas = this.textures.createCanvas(key, w, h)
     if (!canvas) return
     const ctx = canvas.getContext()
@@ -366,59 +534,171 @@ export class Ride25DScene extends Phaser.Scene {
       ctx.translate(w, 0)
       ctx.scale(-1, 1)
     }
-    ctx.strokeStyle = '#e04545'
-    ctx.lineWidth = 92
     ctx.lineCap = 'round'
+
+    // 腕（赤いスーツの袖）: 輪郭→本体→ハイライトの3層で立体感を出す
+    ctx.strokeStyle = '#8f2020'
+    ctx.lineWidth = 122
     ctx.beginPath()
-    ctx.moveTo(196, 320)
-    ctx.lineTo(120, 150)
+    ctx.moveTo(222, 372)
+    ctx.lineTo(142, 188)
     ctx.stroke()
+    ctx.strokeStyle = '#e04545'
+    ctx.lineWidth = 106
+    ctx.beginPath()
+    ctx.moveTo(224, 374)
+    ctx.lineTo(144, 190)
+    ctx.stroke()
+    ctx.strokeStyle = '#f47272'
+    ctx.lineWidth = 28
+    ctx.beginPath()
+    ctx.moveTo(254, 372)
+    ctx.lineTo(184, 216)
+    ctx.stroke()
+
+    // 金の腕輪（ボタン列つき）＋光るウォッチ
     ctx.save()
-    ctx.translate(150, 210)
+    ctx.translate(150, 212)
     ctx.rotate(-0.42)
+    ctx.fillStyle = '#a86f14'
+    ctx.beginPath()
+    ctx.roundRect(-66, -32, 132, 64, 20)
+    ctx.fill()
     ctx.fillStyle = '#f2b632'
     ctx.beginPath()
-    ctx.roundRect(-58, -26, 116, 52, 18)
+    ctx.roundRect(-60, -26, 120, 52, 16)
+    ctx.fill()
+    ctx.fillStyle = 'rgba(255,226,138,0.85)'
+    ctx.beginPath()
+    ctx.roundRect(-54, -22, 108, 16, 8)
+    ctx.fill()
+    // 光るボタン列
+    for (const [bx, bc] of [[-26, '#9ff3ff'], [0, '#ffffff'], [26, '#9ff3ff']] as const) {
+      ctx.fillStyle = bc
+      ctx.beginPath()
+      ctx.roundRect(bx - 10, 4, 20, 10, 5)
+      ctx.fill()
+    }
+    // ウォッチ本体（金枠＋シアンに光る画面）
+    ctx.fillStyle = '#a86f14'
+    ctx.beginPath()
+    ctx.roundRect(-40, -96, 80, 60, 16)
     ctx.fill()
     ctx.fillStyle = '#ffd94d'
     ctx.beginPath()
-    ctx.roundRect(-34, -46, 68, 40, 12)
+    ctx.roundRect(-36, -92, 72, 52, 13)
     ctx.fill()
-    const wg = ctx.createRadialGradient(0, -26, 2, 0, -26, 20)
-    wg.addColorStop(0, '#d6fbff')
-    wg.addColorStop(0.6, '#3fd9f2')
-    wg.addColorStop(1, '#1893ad')
+    const wg = ctx.createRadialGradient(0, -66, 3, 0, -66, 24)
+    wg.addColorStop(0, '#eafcff')
+    wg.addColorStop(0.55, '#3fd9f2')
+    wg.addColorStop(1, '#0f7f99')
     ctx.fillStyle = wg
     ctx.beginPath()
-    ctx.arc(0, -26, 15, 0, Math.PI * 2)
+    ctx.arc(0, -66, 21, 0, Math.PI * 2)
     ctx.fill()
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.arc(-6, -72, 9, Math.PI * 0.9, Math.PI * 1.6)
+    ctx.stroke()
     ctx.restore()
+
+    // 手袋（青・輪郭つき）
+    ctx.fillStyle = '#143a80'
+    ctx.beginPath()
+    ctx.ellipse(104, 104, 52, 46, -0.35, 0, Math.PI * 2)
+    ctx.fill()
     ctx.fillStyle = '#2f6fe0'
     ctx.beginPath()
-    ctx.ellipse(104, 108, 46, 40, -0.35, 0, Math.PI * 2)
+    ctx.ellipse(104, 104, 47, 41, -0.35, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = 'rgba(30,79,176,0.6)'
+    ctx.beginPath()
+    ctx.ellipse(112, 118, 38, 26, -0.35, 0, Math.PI * 2)
     ctx.fill()
     if (!mirror) {
-      ctx.strokeStyle = '#2f6fe0'
-      ctx.lineWidth = 30
+      // 人差し指（ねらう指）: 輪郭→本体
+      ctx.strokeStyle = '#143a80'
+      ctx.lineWidth = 42
       ctx.beginPath()
-      ctx.moveTo(88, 92)
-      ctx.lineTo(52, 34)
+      ctx.moveTo(86, 88)
+      ctx.lineTo(46, 28)
       ctx.stroke()
-      ctx.fillStyle = '#2758b8'
-      for (const [fx, fy] of [[126, 78], [142, 96], [148, 118]] as const) {
+      ctx.strokeStyle = '#2f6fe0'
+      ctx.lineWidth = 32
+      ctx.beginPath()
+      ctx.moveTo(86, 88)
+      ctx.lineTo(46, 28)
+      ctx.stroke()
+      ctx.fillStyle = '#6b9bf5'
+      ctx.beginPath()
+      ctx.ellipse(50, 34, 10, 8, -0.9, 0, Math.PI * 2)
+      ctx.fill()
+      // にぎった指
+      for (const [fx, fy, rot] of [[132, 76, 0.2], [150, 96, 0.35], [156, 120, 0.5]] as const) {
+        ctx.fillStyle = '#143a80'
         ctx.beginPath()
-        ctx.ellipse(fx, fy, 17, 14, -0.3, 0, Math.PI * 2)
+        ctx.ellipse(fx, fy, 21, 17, rot, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = '#2758b8'
+        ctx.beginPath()
+        ctx.ellipse(fx, fy, 18, 14, rot, 0, Math.PI * 2)
         ctx.fill()
       }
+      // 親指
+      ctx.fillStyle = '#143a80'
+      ctx.beginPath()
+      ctx.ellipse(76, 134, 22, 15, 0.9, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = '#2f6fe0'
+      ctx.beginPath()
+      ctx.ellipse(76, 134, 19, 12, 0.9, 0, Math.PI * 2)
+      ctx.fill()
     } else {
-      ctx.strokeStyle = '#2f6fe0'
-      ctx.lineWidth = 24
-      for (const [tx, ty] of [[52, 46], [82, 32], [116, 30], [146, 46]] as const) {
+      // ひらいた指（4本・付け根を手のひらの縁に分散）＋親指
+      for (const [sx, sy, tx, ty] of [
+        [74, 90, 42, 60], [88, 80, 64, 30], [104, 76, 96, 20], [120, 82, 128, 34],
+      ] as const) {
+        ctx.strokeStyle = '#143a80'
+        ctx.lineWidth = 30
         ctx.beginPath()
-        ctx.moveTo(100, 96)
+        ctx.moveTo(sx, sy)
+        ctx.lineTo(tx, ty)
+        ctx.stroke()
+        ctx.strokeStyle = '#2f6fe0'
+        ctx.lineWidth = 22
+        ctx.beginPath()
+        ctx.moveTo(sx, sy)
         ctx.lineTo(tx, ty)
         ctx.stroke()
       }
+      ctx.strokeStyle = '#143a80'
+      ctx.lineWidth = 30
+      ctx.beginPath()
+      ctx.moveTo(126, 118)
+      ctx.lineTo(160, 94)
+      ctx.stroke()
+      ctx.strokeStyle = '#2f6fe0'
+      ctx.lineWidth = 22
+      ctx.beginPath()
+      ctx.moveTo(126, 118)
+      ctx.lineTo(160, 94)
+      ctx.stroke()
+    }
+    // ハニカム模様（うっすら）
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)'
+    ctx.lineWidth = 2
+    for (const [hx, hy] of [[96, 96], [118, 112]] as const) {
+      ctx.beginPath()
+      for (let a = 0; a < 6; a++) {
+        const ang = (Math.PI / 3) * a - Math.PI / 6
+        const px = hx + Math.cos(ang) * 11
+        const py = hy + Math.sin(ang) * 11
+        if (a === 0) ctx.moveTo(px, py)
+        else ctx.lineTo(px, py)
+      }
+      ctx.closePath()
+      ctx.stroke()
     }
     ctx.restore()
     canvas.refresh()
@@ -439,13 +719,24 @@ export class Ride25DScene extends Phaser.Scene {
 
   private buildScenery(): void {
     const totalDistance = this.totalRouteDistance()
-    const kinds = ['building0', 'tree', 'building1', 'lamp', 'building2', 'tree', 'lamp']
+    // 公園リング（道の近く）: 木・花壇・ベンチ・街灯・噴水・遊具 — 参考画像の公園
+    const parkKinds = ['tree', 'bush', 'bench', 'lamp', 'bush', 'fountain', 'tree', 'slide']
     let i = 0
-    for (let z0 = 260; z0 < totalDistance + 2000; z0 += 135, i++) {
+    for (let z0 = 200; z0 < totalDistance + 2000; z0 += 115, i++) {
       const side = i % 2 === 0 ? -1 : 1
-      const key = kinds[i % kinds.length]
-      const worldX = side * (340 + ((i * 137) % 240))
-      const baseScale = key.startsWith('building') ? 0.95 + ((i * 53) % 45) / 100 : 0.9 + ((i * 31) % 30) / 100
+      const key = parkKinds[i % parkKinds.length]
+      const worldX = side * (245 + ((i * 97) % 105))
+      const baseScale = 0.85 + ((i * 31) % 30) / 100
+      const sprite = this.add.image(0, 0, key).setOrigin(0.5, 1).setVisible(false)
+      this.scenery.push({ sprite, worldX, z0, baseScale })
+    }
+    // ビル群リング（遠く）: ネオンのもじシティ
+    let j = 0
+    for (let z0 = 320; z0 < totalDistance + 2000; z0 += 165, j++) {
+      const side = j % 2 === 0 ? 1 : -1
+      const key = `building${j % 3}`
+      const worldX = side * (470 + ((j * 137) % 200))
+      const baseScale = 1.0 + ((j * 53) % 45) / 100
       const sprite = this.add.image(0, 0, key).setOrigin(0.5, 1).setVisible(false)
       this.scenery.push({ sprite, worldX, z0, baseScale })
     }
@@ -466,9 +757,19 @@ export class Ride25DScene extends Phaser.Scene {
       const z = k * spacing - (this.progress % spacing)
       if (z < -60) continue
       const p = project(0, z)
-      const alpha = Math.min(0.32, 0.05 + p.s * 0.3)
-      g.lineStyle(Math.max(1.5, 3 * p.s), 0x8f7fd8, alpha)
+      const alpha = Math.min(0.36, 0.06 + p.s * 0.34)
+      g.lineStyle(Math.max(1.5, 3 * p.s), 0x9b8ce0, alpha)
       g.lineBetween(VP.x - 900 * p.s, p.y + yOff, VP.x + 900 * p.s, p.y + yOff)
+      // 道の両端の光る石（参考画像の床ライト。シアン/ピンク交互）
+      const worldIndex = k + Math.floor(this.progress / spacing)
+      for (const side of [-1, 1] as const) {
+        const q = project(side * 168, z)
+        const color = (worldIndex + (side === 1 ? 1 : 0)) % 2 === 0 ? 0x59e0f2 : 0xff8fd0
+        g.fillStyle(color, Math.min(0.6, 0.12 + p.s * 0.5))
+        g.fillCircle(q.x, q.y + yOff, Math.max(2, 5.5 * p.s))
+        g.fillStyle(color, 0.15)
+        g.fillCircle(q.x, q.y + yOff, Math.max(4, 12 * p.s))
+      }
     }
     for (const wx of [-430, -150, 150, 430]) {
       const far = project(wx, 1900)
@@ -538,7 +839,9 @@ export class Ride25DScene extends Phaser.Scene {
     }
     if (this.phase !== 'riding' && this.phase !== 'slowing') return
     const remain = this.nextEventAt - this.progress
-    if (remain < 120 && this.phase === 'riding' && this.pending !== 'goal') {
+    // 敵間距離が短いステージでも「進んでから減速」が成立するよう、減速開始は距離に比例
+    const slowDist = Math.min(120, this.battle.rideDistance * 0.5)
+    if (remain < slowDist && this.phase === 'riding' && this.pending !== 'goal') {
       this.phase = 'slowing'
       this.targetSpeed = 24
     }
@@ -975,18 +1278,19 @@ export class Ride25DScene extends Phaser.Scene {
   // ============================================================= 手・ビーム
 
   private buildHands(): void {
-    const right = this.add.image(0, 0, 'hand-r').setOrigin(0.5, 1)
-    this.handR = this.add.container(GAME_W - 175, GAME_H + 24, [right]).setDepth(7000)
-    const left = this.add.image(0, 0, 'hand-l').setOrigin(0.5, 1).setScale(0.9)
-    const handL = this.add.container(150, GAME_H + 60, [left]).setDepth(7000)
+    const right = this.add.image(0, 0, 'hand-r').setOrigin(0.5, 1).setScale(1.12)
+    this.handR = this.add.container(GAME_W - 158, GAME_H + 34, [right]).setDepth(7000)
+    const left = this.add.image(0, 0, 'hand-l').setOrigin(0.5, 1).setScale(1.02)
+    const handL = this.add.container(148, GAME_H + 52, [left]).setDepth(7000)
     this.tweens.add({
-      targets: this.handR, y: GAME_H + 30, duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      targets: this.handR, y: GAME_H + 40, duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     })
     this.tweens.add({
-      targets: handL, y: GAME_H + 66, duration: 1900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      targets: handL, y: GAME_H + 58, duration: 1900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     })
-    this.fingertip.x = this.handR.x + (52 - 120)
-    this.fingertip.y = GAME_H + 24 - 300 + 34
+    // 指先（ビーム発射点）: テクスチャ内 (46,28)・中心130・高さ340・スケール1.12
+    this.fingertip.x = this.handR.x + (46 - 130) * 1.12
+    this.fingertip.y = GAME_H + 34 + (28 - 340) * 1.12
     const glow = this.add.image(this.fingertip.x, this.fingertip.y, 'softglow')
       .setDepth(7001).setScale(0.22).setTint(0xffe066).setAlpha(0.5)
     this.tweens.add({
