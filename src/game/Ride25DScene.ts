@@ -75,7 +75,7 @@ export class Ride25DScene extends Phaser.Scene {
   private progress = 0
   private speed = 0
   private targetSpeed = 0
-  private cruiseSpeed = 150
+  private cruiseSpeed = 175
   private phase: RidePhase = 'riding'
   private pending: PendingEvent = 'enemy'
   private nextEventAt = 0
@@ -517,7 +517,7 @@ export class Ride25DScene extends Phaser.Scene {
     const sprite = this.add.image(0, 0, 'enemies', 0)
       .setOrigin(0.5, 0.5).setDepth(3500).setVisible(false).setTint(0xb8b8cc)
     // 対峙位置（z≈90）でちょうど対峙サイズになる逆算スケール
-    const meetScale = isBoss ? 0.74 : 0.5
+    const meetScale = isBoss ? 0.8 : 0.58
     const sAtMeet = FOCAL / (FOCAL + 90)
     this.approach = {
       sprite,
@@ -527,16 +527,22 @@ export class Ride25DScene extends Phaser.Scene {
     }
   }
 
+
   // ================================================================== rig
 
   private updateRig(dt: number): void {
+    // 対峙中も世界はゆっくり前へ流れ続ける（没入感。文字はスクリーン空間なので読みやすさに影響なし）
+    if (this.phase === 'encounter') {
+      this.progress += 12 * dt
+      return
+    }
     if (this.phase !== 'riding' && this.phase !== 'slowing') return
     const remain = this.nextEventAt - this.progress
-    if (remain < 170 && this.phase === 'riding' && this.pending !== 'goal') {
+    if (remain < 120 && this.phase === 'riding' && this.pending !== 'goal') {
       this.phase = 'slowing'
-      this.targetSpeed = 30
+      this.targetSpeed = 24
     }
-    this.speed += (this.targetSpeed - this.speed) * Math.min(1, dt * 2.2)
+    this.speed += (this.targetSpeed - this.speed) * Math.min(1, dt * 3)
     this.progress += this.speed * dt
     if (this.progress >= this.nextEventAt) {
       this.progress = this.nextEventAt
@@ -557,9 +563,9 @@ export class Ride25DScene extends Phaser.Scene {
     this.purifyStep = 0
     this.purifyStepsNeeded = isBoss ? this.battle.bossPurifySteps : this.battle.purifyStepsPerEnemy
 
-    // 近づいてきたビルボードを対峙位置へなめらかに引き継ぐ
-    const targetScale = isBoss ? 0.72 : 0.5
-    const targetY = isBoss ? 222 : 235
+    // 近づいてきたビルボードを対峙位置へなめらかに引き継ぐ（参考画像に合わせて大きめ）
+    const targetScale = isBoss ? 0.8 : 0.58
+    const targetY = isBoss ? 218 : 235
     let m: Phaser.GameObjects.Image
     if (this.approach) {
       m = this.approach.sprite
@@ -571,7 +577,7 @@ export class Ride25DScene extends Phaser.Scene {
     this.monster = m
     this.tweens.add({
       targets: m, x: GAME_W / 2, y: targetY, scale: targetScale,
-      duration: 550, ease: 'Sine.easeOut',
+      duration: 420, ease: 'Sine.easeOut',
       onComplete: () => {
         m.setTint(0xcfcfe0)
         this.tweens.add({
@@ -605,7 +611,8 @@ export class Ride25DScene extends Phaser.Scene {
     if (isBoss) {
       voice.speak('おおきな もやもや ボスだ！ がんばれ！')
     }
-    this.time.delayedCall(isBoss ? 1000 : 650, () => this.startPurifyStep())
+    // すぐに出題（待たせない）
+    this.time.delayedCall(isBoss ? 900 : 180, () => this.startPurifyStep())
   }
 
   private buildPurifyMeter(steps: number): void {
@@ -658,21 +665,21 @@ export class Ride25DScene extends Phaser.Scene {
     if (attempts >= 3 && accuracy < 0.7) choiceCount = Math.max(3, choiceCount - 1)
     const useConfusables = attempts >= 3 && accuracy > 0.85
 
-    // 「今回狙う文字」を音声＋大きな表示で毎回明確に
+    // 「今回狙う文字」は音だけで伝える（文字を見せると答えが分かってしまう）
     this.announceTarget(this.currentTarget)
-    this.setMissionText(`「${this.currentTarget}」を ねらって！`)
 
     const distractors = pickDistractors(this.currentTarget, choiceCount - 1, useConfusables)
     const labels = Phaser.Utils.Array.Shuffle([this.currentTarget, ...distractors])
+    // 敵を囲むアーチ配置（参考画像のレイアウトA: 敵の左右〜手前に重なる）
     const arc: Array<[number, number]> = [
-      [-330, 300], [-185, 372], [0, 408], [185, 372], [330, 300],
+      [-330, 245], [-185, 310], [0, 350], [185, 310], [330, 245],
     ]
     // 単調にならないよう、たまに左右反転
     const positions = (this.enemyIndex + this.purifyStep) % 2 === 1
       ? arc.map(([x, y]) => [-x, y] as [number, number])
       : arc
 
-    this.time.delayedCall(650, () => {
+    this.time.delayedCall(420, () => {
       labels.forEach((label, i) => {
         const [ox, oy] = positions[i % positions.length]
         this.createChoiceBubble(label, this.currentKind, GAME_W / 2 + ox, oy, i)
@@ -684,9 +691,31 @@ export class Ride25DScene extends Phaser.Scene {
     })
   }
 
-  /** 狙う文字のアナウンス（中サイズのフラッシュ表示＋読み上げ） */
+  /**
+   * 狙う文字のアナウンス。
+   * 音だけで「め」と言う（文字を画面に出すと、聞かなくても答えが分かってしまうため）。
+   * TTS が使えない環境だけ、フォールバックとして文字を表示する。
+   */
   private announceTarget(label: string): void {
-    voice.speak(`${label} を ねらって！`)
+    const spoke = voice.speak(`${label}！`, { rate: 0.7 })
+    if (spoke && voice.available()) {
+      this.setMissionText('おとを きいて ねらおう！')
+      // 🔊 がふわっと光るだけ（答えは見せない）
+      const glow = this.add.image(GAME_W / 2, 300, 'softglow')
+        .setDepth(8390).setScale(1.3).setAlpha(0.7).setTint(0xfff2c0)
+      const icon = this.add.text(GAME_W / 2, 300, '🔊', { fontSize: '90px' })
+        .setOrigin(0.5).setDepth(8400).setScale(0)
+      this.tweens.add({ targets: icon, scale: 1, duration: 220, ease: 'Back.easeOut' })
+      this.tweens.add({ targets: icon, scale: 1.12, duration: 260, delay: 240, yoyo: true })
+      this.tweens.add({
+        targets: [icon, glow], alpha: 0, duration: 260, delay: 800,
+        ease: 'Cubic.easeIn',
+        onComplete: () => { icon.destroy(); glow.destroy() },
+      })
+      return
+    }
+    // フォールバック: 音が出ない環境では文字で伝える（従来表示）
+    this.setMissionText(`「${label}」を ねらって！`)
     const glow = this.add.image(GAME_W / 2, 300, 'softglow')
       .setDepth(8390).setScale(1.7).setAlpha(0.8).setTint(0xfff2c0)
     const big = this.add.text(GAME_W / 2, 300, label, {
@@ -702,7 +731,7 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   private speakPrompt(): void {
-    if (this.currentTarget) voice.speak(`${this.currentTarget} を ねらって！`)
+    if (this.currentTarget) voice.speak(`${this.currentTarget}！`, { rate: 0.7 })
   }
 
   private createChoiceBubble(label: string, kind: TargetKind, x: number, y: number, index: number): void {
@@ -767,9 +796,9 @@ export class Ride25DScene extends Phaser.Scene {
     this.clearBubbles()
 
     if (this.purifyStep >= this.purifyStepsNeeded) {
-      this.time.delayedCall(850, () => this.completePurify())
+      this.time.delayedCall(700, () => this.completePurify())
     } else {
-      this.time.delayedCall(1250, () => this.startPurifyStep())
+      this.time.delayedCall(1000, () => this.startPurifyStep())
     }
     this.updateDebugHook()
   }
@@ -828,25 +857,31 @@ export class Ride25DScene extends Phaser.Scene {
     sparkle.explode(isBoss ? 30 : 16, m.x, m.y)
     this.time.delayedCall(1000, () => sparkle.destroy())
 
-    const riseDelay = isBoss ? 800 : 450
+    const riseDelay = isBoss ? 800 : 350
     this.tweens.add({
       targets: happy, y: m.y - 240, alpha: 0, scale: m.scale * 0.8,
-      duration: 900, delay: riseDelay, ease: 'Sine.easeIn',
+      duration: 800, delay: riseDelay, ease: 'Sine.easeIn',
     })
     if (this.meterBox) {
       this.tweens.add({ targets: this.meterBox, alpha: 0, duration: 300, delay: riseDelay })
     }
 
-    this.time.delayedCall(isBoss ? 1800 : 1150, () => {
+    // この対峙のオブジェクトをローカルに引き取り、フィールドは即リセット
+    // （演出中に次の対峙が始まっても競合しない）
+    const puffs = this.mistPuffs
+    const meterBox = this.meterBox
+    this.mistPuffs = []
+    this.meterBox = null
+    this.meterCells = []
+    this.monster = null
+
+    // 演出の途中で前進を再開する（笑顔が空へ帰るのを見ながら次へ＝待ち時間ゼロ）
+    this.time.delayedCall(isBoss ? 1800 : 550, () => this.afterPurify(isBoss))
+    this.time.delayedCall(isBoss ? 1900 : 1300, () => {
       m.destroy()
       happy.destroy()
-      this.mistPuffs.forEach(p => p.destroy())
-      this.mistPuffs = []
-      this.meterBox?.destroy()
-      this.meterBox = null
-      this.meterCells = []
-      this.monster = null
-      this.afterPurify(isBoss)
+      puffs.forEach(p => p.destroy())
+      meterBox?.destroy()
     })
   }
 
@@ -897,6 +932,10 @@ export class Ride25DScene extends Phaser.Scene {
     this.tweens.add({ targets: b.container, angle: 10, duration: 60, yoyo: true, repeat: 3 })
     this.showGentleFeedback(b.container.x, b.container.y, `これは「${b.label}」だよ`)
     voice.speak(`これは、${b.label}、だよ`)
+    // 狙う音をもう一度（音だけの出題なので忘れさせない）
+    this.time.delayedCall(1600, () => {
+      if (this.stepActive) voice.speak(`${this.currentTarget}！`, { rate: 0.7 })
+    })
 
     // 知識の誤りなので統計に記録（撃ち逃し・時間切れは記録しない）
     recordAnswer(this.currentTarget, this.currentKind, false)
