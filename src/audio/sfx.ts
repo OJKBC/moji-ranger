@@ -122,6 +122,12 @@ class SfxPlayer {
   uiTap(): void {
     this.tone('sine', 700, 900, 0.07, 0.1)
   }
+
+  /** ボス出現の予兆（低くやわらかい気配。怖がらせない） */
+  omen(): void {
+    this.tone('triangle', 130, 95, 0.5, 0.12)
+    this.tone('triangle', 110, 85, 0.6, 0.1, 0.45)
+  }
 }
 
 export const sfx = new SfxPlayer()

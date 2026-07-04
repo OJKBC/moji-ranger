@@ -45,10 +45,32 @@ export interface EncounterSpec {
   boss?: boolean
 }
 
-/** ルートの1区間。ride=前進 / encounter=対峙 */
+/** ルートの1区間。ride=前進 / encounter=対峙（レガシー: battle 形式を推奨） */
 export type StageSegment =
   | { type: 'ride'; distance: number }
   | { type: 'encounter'; encounterId: string }
+
+/**
+ * 連戦→ボス形式のステージ定義。
+ * 前進中に敵が近づいてくる→1体ずつ対峙して浄化→規定体数でボス出現。
+ * すべてデータ編集だけで調整できる。
+ */
+export interface StageBattle {
+  /** ボス出現までに浄化するザコの体数 */
+  enemyCount: number
+  /** ザコ1体の浄化に必要な正解数（1推奨=テンポ重視。メーターは2以上で表示） */
+  purifyStepsPerEnemy: number
+  /** ボスの浄化に必要な正解数 */
+  bossPurifySteps: number
+  /** 選択肢の数（正答率<70%で自動で1減る / >85%で似た文字が混ざる） */
+  choiceCount: number
+  /** 敵と敵の間の前進距離 */
+  rideDistance: number
+  /** 出題プール（習わせたい順）。習得に応じて先頭から徐々に開放される */
+  letterPool: string[]
+  /** 最初に開放しておくプールの文字数 */
+  poolStart: number
+}
 
 /** 敵のランタイム状態 */
 export interface EnemyState {
@@ -86,9 +108,11 @@ export interface Stage {
   mode: StageMode
   /** ゲームシーンの描画方式。'2.5d'=オンレール対峙 / 省略時 '2d'=固定画面（レガシー） */
   renderer?: '2d' | '2.5d'
-  /** 2.5d 用: ルート構成（前進→対峙→前進…） */
+  /** 2.5d 用: 連戦→ボスのバトル定義（推奨） */
+  battle?: StageBattle
+  /** 2.5d 用: ルート構成（レガシー・battle があれば不要） */
   segments?: StageSegment[]
-  /** 2.5d 用: 対峙エンカウント定義 */
+  /** 2.5d 用: 対峙エンカウント定義（レガシー・battle があれば不要） */
   encounters?: EncounterSpec[]
   recommendedAgeMin: number
   recommendedAgeMax: number

@@ -28,3 +28,19 @@ export function pickNextLetter(pool: string[], kind: TargetKind): string {
   }
   return best
 }
+
+/**
+ * 習得に応じて徐々に広がるプールから、次のターゲットを選ぶ。
+ * - プール（習わせたい順）の先頭 poolStart 文字から始める
+ * - correct が2回以上になった文字が増えるたびに、次の文字が1つ開放される
+ * - exclude（直前のターゲット）は候補が2つ以上あれば避け、同じ文字の連続を防ぐ
+ */
+export function pickTargetLetter(pool: string[], poolStart: number, kind: TargetKind, exclude?: string): string {
+  const progress = loadProgress()
+  const map = kind === 'number' ? progress.numberStats : progress.letterStats
+  const learned = pool.filter(l => (map[l]?.correct ?? 0) >= 2).length
+  const unlockedCount = Math.min(pool.length, poolStart + learned)
+  let unlocked = pool.slice(0, unlockedCount)
+  if (exclude && unlocked.length > 1) unlocked = unlocked.filter(l => l !== exclude)
+  return pickNextLetter(unlocked, kind)
+}

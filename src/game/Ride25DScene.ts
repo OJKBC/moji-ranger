@@ -5,9 +5,10 @@ import { EventBus } from '../EventBus'
 import { sfx } from '../audio/sfx'
 import { voice } from '../audio/voice'
 import { nextStageOf } from '../data/stages'
-import { pickNextLetter } from '../learning/picker'
+import { pickDistractors } from '../learning/distractors'
+import { pickNextLetter, pickTargetLetter } from '../learning/picker'
 import { recordAnswer, recordSeen, recordStageClear } from '../store/progress'
-import type { EncounterSpec, Stage, StageResult, TargetKind, TargetSpec } from '../types'
+import type { Stage, StageBattle, StageResult, TargetKind } from '../types'
 
 export const GAME_W = 960
 export const GAME_H = 640
@@ -36,6 +37,14 @@ interface SceneryItem {
   baseScale: number
 }
 
+/** 前方から近づいてくる敵ビルボード */
+interface ApproachingEnemy {
+  sprite: Phaser.GameObjects.Image
+  z0: number
+  baseScale: number
+  isBoss: boolean
+}
+
 /** 対峙中の選択肢バブル（スクリーン空間固定・不透明最前面） */
 interface ChoiceBubble {
   container: Phaser.GameObjects.Container
@@ -50,41 +59,54 @@ interface ChoiceBubble {
 }
 
 type RidePhase = 'riding' | 'slowing' | 'encounter' | 'finished'
+type PendingEvent = 'enemy' | 'boss' | 'goal'
 
 /**
- * 2.5D オンレール対峙シーン。
- * カメラが街を前進 → もやもやモンスターと対峙 → 選択肢を撃って浄化 → また前進。
- * パララックス＋ビルボード拡大の疑似3D（Three.js 不使用）。
- * 文字バブルはスクリーン空間の不透明最前面レイヤーで、奥行き縮小を適用しない（読みやすさ最優先）。
+ * 2.5D オンレール連戦シーン。
+ * 前進中に敵が前方から近づいてくる → 1体ずつ対峙して浄化 → 規定体数でボス出現 → ゴール。
+ * 出題は敵ごとに学習システム（間隔反復＋習得に応じたプール開放）が選び、
+ * 正答率70〜85%帯を狙って選択肢数・類似文字を自動調整する。
  */
 export class Ride25DScene extends Phaser.Scene {
   private stageData: Stage
+  private battle!: StageBattle
 
-  // カメラリグ（進行・減速・対峙・再開）
+  // カメラリグ
   private progress = 0
   private speed = 0
   private targetSpeed = 0
   private cruiseSpeed = 150
   private phase: RidePhase = 'riding'
-  private segIndex = 0
-  private segmentEnd = 0 // 現在の ride 区間が終わる progress
+  private pending: PendingEvent = 'enemy'
+  private nextEventAt = 0
   private bobY = 0
+  private lookUpY = 0 // ボス予兆でゆっくり見上げる
 
   // 世界
+  private bgImage!: Phaser.GameObjects.Image
+  private bgBaseY = 0
   private scenery: SceneryItem[] = []
   private groundG!: Phaser.GameObjects.Graphics
+  private approach: ApproachingEnemy | null = null
 
   // 一人称の手・照準
   private handR!: Phaser.GameObjects.Container
-  private handL!: Phaser.GameObjects.Container
   private fingertip = { x: 0, y: 0 }
   private reticle!: Phaser.GameObjects.Container
   private aim = { x: GAME_W / 2, y: 330 }
 
+  // 連戦の進行
+  private enemyIndex = 0
+  private bossActive = false
+  private practiced: string[] = []
+  private counterDots: Phaser.GameObjects.Arc[] = []
+  private counterCrown: Phaser.GameObjects.Text | null = null
+
   // 対峙
-  private encounter: EncounterSpec | null = null
   private purifyStep = 0
+  private purifyStepsNeeded = 1
   private currentTarget = ''
+  private lastTarget = ''
   private currentKind: TargetKind = 'hiragana'
   private bubbles: ChoiceBubble[] = []
   private monster: Phaser.GameObjects.Image | null = null
@@ -94,7 +116,7 @@ export class Ride25DScene extends Phaser.Scene {
   private stepStartAt = 0
   private stepActive = false
 
-  // UI・進行
+  // UI・統計
   private missionLabel!: Phaser.GameObjects.Text
   private missionBar!: Phaser.GameObjects.Container
   private comboBadge!: Phaser.GameObjects.Container
@@ -102,6 +124,7 @@ export class Ride25DScene extends Phaser.Scene {
   private combo = 0
   private maxCombo = 0
   private wrongTotal = 0
+  private sessionCorrect = 0
   private wrongThisStep = 0
   private wrongTapStreak = 0
   private hintReplayDone = false
@@ -122,6 +145,17 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   create(): void {
+    // battle 未定義の 2.5d ステージにも安全なデフォルトを与える
+    this.battle = this.stageData.battle ?? {
+      enemyCount: 3,
+      purifyStepsPerEnemy: 1,
+      bossPurifySteps: 3,
+      choiceCount: 5,
+      rideDistance: 480,
+      letterPool: [this.stageData.correctAnswer ?? 'あ'],
+      poolStart: 5,
+    }
+
     this.stageStartAt = this.time.now
     this.makeTextures()
     this.buildSky()
@@ -131,6 +165,7 @@ export class Ride25DScene extends Phaser.Scene {
     this.buildReticle()
     this.buildMissionBar()
     this.buildComboBadge()
+    this.buildBattleCounter()
 
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       this.aim.x = p.x
@@ -146,17 +181,20 @@ export class Ride25DScene extends Phaser.Scene {
       voice.cancel()
     })
 
-    // 出発！
-    this.setMissionText('すすめー！')
-    this.startNextSegment()
-    this.time.delayedCall(500, () => voice.speak('もじシティを パトロールだ！ すすめー！'))
+    // 出発！ 最初の敵がもう前方に見えている
+    this.pending = 'enemy'
+    this.nextEventAt = this.battle.rideDistance
+    this.spawnApproaching(false)
+    this.phase = 'riding'
+    this.targetSpeed = this.cruiseSpeed
+    this.setMissionText('もやもやを じょうかしよう！')
+    this.time.delayedCall(500, () => voice.speak('もじシティを パトロールだ！ もやもやを じょうかしよう！'))
     this.updateDebugHook()
   }
 
   // ================================================================ textures
 
   private makeTextures(): void {
-    // --- 既存シーンと共通のパーツ ---
     if (!this.textures.exists('dot')) {
       const g = this.add.graphics()
       g.fillStyle(0xffffff, 1)
@@ -197,7 +235,6 @@ export class Ride25DScene extends Phaser.Scene {
         canvas.refresh()
       }
     }
-    // --- 不透明バブル（2.5D 対峙用: 敵と重なっても文字がくっきり） ---
     if (!this.textures.exists('bubble25')) {
       const size = 160
       const canvas = this.textures.createCanvas('bubble25', size, size)
@@ -224,7 +261,6 @@ export class Ride25DScene extends Phaser.Scene {
         canvas.refresh()
       }
     }
-    // --- もやパフ（敵のまわりの晴れていく「もや」） ---
     if (!this.textures.exists('mist')) {
       const size = 140
       const canvas = this.textures.createCanvas('mist', size, size)
@@ -239,7 +275,6 @@ export class Ride25DScene extends Phaser.Scene {
         canvas.refresh()
       }
     }
-    // --- 街の置き物（ビル3種・木・街灯） ---
     for (let v = 0; v < 3; v++) {
       const key = `building${v}`
       if (this.textures.exists(key)) continue
@@ -254,18 +289,15 @@ export class Ride25DScene extends Phaser.Scene {
       ctx.beginPath()
       ctx.roundRect(6, 20, w - 12, h - 20, 18)
       ctx.fill()
-      // 屋上のネオンライン
       ctx.strokeStyle = neons[v]
       ctx.lineWidth = 5
       ctx.beginPath()
       ctx.roundRect(10, 24, w - 20, h - 28, 15)
       ctx.stroke()
-      // 屋上ドーム
       ctx.fillStyle = neons[(v + 1) % 3]
       ctx.beginPath()
       ctx.arc(w / 2, 20, 14, Math.PI, 0)
       ctx.fill()
-      // 窓
       ctx.fillStyle = 'rgba(255,231,150,0.9)'
       for (let row = 0; row < Math.floor((h - 60) / 44); row++) {
         for (let col = 0; col < Math.floor((w - 40) / 40); col++) {
@@ -318,12 +350,11 @@ export class Ride25DScene extends Phaser.Scene {
         canvas.refresh()
       }
     }
-    // --- 一人称の手（右: 指さし / 左: ひらいた手） ---
     this.makeHandTexture('hand-r', false)
     this.makeHandTexture('hand-l', true)
   }
 
-  /** かわいい手袋の手を描く。pointing=false は右手（人差し指でねらう） */
+  /** かわいい手袋の手を描く。mirror=true は左手（ひらいた手） */
   private makeHandTexture(key: string, mirror: boolean): void {
     if (this.textures.exists(key)) return
     const w = 240, h = 300
@@ -335,7 +366,6 @@ export class Ride25DScene extends Phaser.Scene {
       ctx.translate(w, 0)
       ctx.scale(-1, 1)
     }
-    // 腕（赤いスーツの袖）: 右下から左上へ
     ctx.strokeStyle = '#e04545'
     ctx.lineWidth = 92
     ctx.lineCap = 'round'
@@ -343,7 +373,6 @@ export class Ride25DScene extends Phaser.Scene {
     ctx.moveTo(196, 320)
     ctx.lineTo(120, 150)
     ctx.stroke()
-    // 金のカフス
     ctx.save()
     ctx.translate(150, 210)
     ctx.rotate(-0.42)
@@ -351,7 +380,6 @@ export class Ride25DScene extends Phaser.Scene {
     ctx.beginPath()
     ctx.roundRect(-58, -26, 116, 52, 18)
     ctx.fill()
-    // ウォッチ（光る画面）
     ctx.fillStyle = '#ffd94d'
     ctx.beginPath()
     ctx.roundRect(-34, -46, 68, 40, 12)
@@ -365,20 +393,17 @@ export class Ride25DScene extends Phaser.Scene {
     ctx.arc(0, -26, 15, 0, Math.PI * 2)
     ctx.fill()
     ctx.restore()
-    // 手袋（青）
     ctx.fillStyle = '#2f6fe0'
     ctx.beginPath()
     ctx.ellipse(104, 108, 46, 40, -0.35, 0, Math.PI * 2)
     ctx.fill()
     if (!mirror) {
-      // 人差し指（ねらう指）
       ctx.strokeStyle = '#2f6fe0'
       ctx.lineWidth = 30
       ctx.beginPath()
       ctx.moveTo(88, 92)
       ctx.lineTo(52, 34)
       ctx.stroke()
-      // にぎった指
       ctx.fillStyle = '#2758b8'
       for (const [fx, fy] of [[126, 78], [142, 96], [148, 118]] as const) {
         ctx.beginPath()
@@ -386,7 +411,6 @@ export class Ride25DScene extends Phaser.Scene {
         ctx.fill()
       }
     } else {
-      // ひらいた指
       ctx.strokeStyle = '#2f6fe0'
       ctx.lineWidth = 24
       for (const [tx, ty] of [[52, 46], [82, 32], [116, 30], [146, 46]] as const) {
@@ -403,14 +427,18 @@ export class Ride25DScene extends Phaser.Scene {
   // ================================================================== world
 
   private buildSky(): void {
-    const bg = this.add.image(GAME_W / 2, GAME_H / 2 - 40, 'bg').setDepth(0)
-    const scale = Math.max(GAME_W / bg.width, GAME_H / bg.height) * 1.04
-    bg.setScale(scale)
+    this.bgImage = this.add.image(GAME_W / 2, GAME_H / 2 - 40, 'bg').setDepth(0)
+    const scale = Math.max(GAME_W / this.bgImage.width, GAME_H / this.bgImage.height) * 1.04
+    this.bgImage.setScale(scale)
+    this.bgBaseY = this.bgImage.y
   }
 
-  /** ルート全長に沿って街の置き物を先に生やしておく（毎フレームは投影のみ） */
+  private totalRouteDistance(): number {
+    return this.battle.rideDistance * (this.battle.enemyCount + 2.5)
+  }
+
   private buildScenery(): void {
-    const totalDistance = this.totalRideDistance()
+    const totalDistance = this.totalRouteDistance()
     const kinds = ['building0', 'tree', 'building1', 'lamp', 'building2', 'tree', 'lamp']
     let i = 0
     for (let z0 = 260; z0 < totalDistance + 2000; z0 += 135, i++) {
@@ -423,21 +451,16 @@ export class Ride25DScene extends Phaser.Scene {
     }
   }
 
-  private totalRideDistance(): number {
-    return (this.stageData.segments ?? [])
-      .filter(s => s.type === 'ride')
-      .reduce((sum, s) => sum + (s.type === 'ride' ? s.distance : 0), 0)
-  }
-
   private renderWorld(time: number): void {
-    // 地面（消失点に収束するグリッド）。地平線側は透明に溶かして背景と馴染ませる
+    const yOff = this.bobY + this.lookUpY
+    this.bgImage.y = this.bgBaseY + yOff * 0.55
+
     const g = this.groundG
     g.clear()
     g.fillGradientStyle(0x241a4a, 0x241a4a, 0x241a4a, 0x241a4a, 0, 0, 0.95, 0.95)
-    g.fillRect(0, VP.y + 6 + this.bobY, GAME_W, 130)
+    g.fillRect(0, VP.y + 6 + yOff, GAME_W, 130)
     g.fillStyle(0x241a4a, 0.95)
-    g.fillRect(0, VP.y + 136 + this.bobY, GAME_W, GAME_H - VP.y - 136)
-    // 横線（進行に合わせて流れる）
+    g.fillRect(0, VP.y + 136 + yOff, GAME_W, GAME_H - VP.y - 136)
     const spacing = 130
     for (let k = 0; k < 16; k++) {
       const z = k * spacing - (this.progress % spacing)
@@ -445,17 +468,15 @@ export class Ride25DScene extends Phaser.Scene {
       const p = project(0, z)
       const alpha = Math.min(0.32, 0.05 + p.s * 0.3)
       g.lineStyle(Math.max(1.5, 3 * p.s), 0x8f7fd8, alpha)
-      g.lineBetween(VP.x - 900 * p.s, p.y + this.bobY, VP.x + 900 * p.s, p.y + this.bobY)
+      g.lineBetween(VP.x - 900 * p.s, p.y + yOff, VP.x + 900 * p.s, p.y + yOff)
     }
-    // 縦線（道の端）
     for (const wx of [-430, -150, 150, 430]) {
       const far = project(wx, 1900)
       const near = project(wx, -60)
       g.lineStyle(2, 0x8f7fd8, 0.22)
-      g.lineBetween(far.x, far.y + this.bobY, near.x, near.y + this.bobY)
+      g.lineBetween(far.x, far.y + yOff, near.x, near.y + yOff)
     }
 
-    // ビルボード
     for (const item of this.scenery) {
       const z = item.z0 - this.progress
       if (z < 30 || z > 1500) {
@@ -465,102 +486,126 @@ export class Ride25DScene extends Phaser.Scene {
       const p = project(item.worldX, z)
       item.sprite
         .setVisible(true)
-        .setPosition(p.x, p.y + this.bobY)
+        .setPosition(p.x, p.y + yOff)
         .setScale(p.s * item.baseScale)
         .setDepth(60 + Math.round(1500 - z))
         .setAlpha(Math.min(1, (1500 - z) / 260))
-      // 遠くはうっすら夜色に沈む
       const dim = Math.round(150 + 105 * Math.min(1, p.s * 1.4))
       item.sprite.setTint(Phaser.Display.Color.GetColor(dim, dim, Math.min(255, dim + 25)))
     }
-    void time
+
+    // 前方から近づいてくる敵
+    if (this.approach) {
+      const a = this.approach
+      const z = a.z0 - this.progress
+      if (z > 1600) {
+        a.sprite.setVisible(false)
+      } else {
+        const sway = Math.sin(time * 0.0024) * 26
+        const p = project(sway, z)
+        a.sprite
+          .setVisible(true)
+          .setPosition(p.x, p.y - 460 * p.s + yOff)
+          .setScale(p.s * a.baseScale)
+          .setAlpha(Math.min(1, (1600 - z) / 300))
+      }
+    }
+  }
+
+  /** 次の敵を前方に出す（近づいてくるのが見える） */
+  private spawnApproaching(isBoss: boolean): void {
+    const sprite = this.add.image(0, 0, 'enemies', 0)
+      .setOrigin(0.5, 0.5).setDepth(3500).setVisible(false).setTint(0xb8b8cc)
+    // 対峙位置（z≈90）でちょうど対峙サイズになる逆算スケール
+    const meetScale = isBoss ? 0.74 : 0.5
+    const sAtMeet = FOCAL / (FOCAL + 90)
+    this.approach = {
+      sprite,
+      z0: this.nextEventAt + 90,
+      baseScale: meetScale / sAtMeet,
+      isBoss,
+    }
   }
 
   // ================================================================== rig
 
-  private startNextSegment(): void {
-    const segments = this.stageData.segments ?? []
-    if (this.segIndex >= segments.length) {
-      this.finishStage()
-      return
-    }
-    const seg = segments[this.segIndex]
-    if (seg.type === 'ride') {
-      this.segmentEnd = this.progress + seg.distance
-      this.phase = 'riding'
-      this.targetSpeed = this.cruiseSpeed
-    } else {
-      const enc = (this.stageData.encounters ?? []).find(e => e.id === seg.encounterId)
-      this.segIndex++
-      if (enc) {
-        this.startEncounter(enc)
-      } else {
-        this.startNextSegment()
-      }
-    }
-  }
-
   private updateRig(dt: number): void {
-    if (this.phase === 'riding' || this.phase === 'slowing') {
-      const remain = this.segmentEnd - this.progress
-      if (remain < 170 && this.phase === 'riding') {
-        this.phase = 'slowing'
-        this.targetSpeed = 30
-      }
-      // なめらかな加減速（急変化は酔いのもと）
-      this.speed += (this.targetSpeed - this.speed) * Math.min(1, dt * 2.2)
-      this.progress += this.speed * dt
-      if (this.progress >= this.segmentEnd) {
-        this.progress = this.segmentEnd
+    if (this.phase !== 'riding' && this.phase !== 'slowing') return
+    const remain = this.nextEventAt - this.progress
+    if (remain < 170 && this.phase === 'riding' && this.pending !== 'goal') {
+      this.phase = 'slowing'
+      this.targetSpeed = 30
+    }
+    this.speed += (this.targetSpeed - this.speed) * Math.min(1, dt * 2.2)
+    this.progress += this.speed * dt
+    if (this.progress >= this.nextEventAt) {
+      this.progress = this.nextEventAt
+      if (this.pending === 'goal') {
+        this.finishStage()
+      } else {
         this.speed = 0
-        this.segIndex++
-        this.startNextSegment()
+        this.beginEncounter(this.pending === 'boss')
       }
     }
   }
 
   // ============================================================== encounter
 
-  private startEncounter(enc: EncounterSpec): void {
+  private beginEncounter(isBoss: boolean): void {
     this.phase = 'encounter'
-    this.encounter = enc
+    this.bossActive = isBoss
     this.purifyStep = 0
+    this.purifyStepsNeeded = isBoss ? this.battle.bossPurifySteps : this.battle.purifyStepsPerEnemy
 
-    // 敵の登場（奥からふわっと近づく）
-    const mx = GAME_W / 2
-    this.monster = this.add.image(mx, 330, 'enemies', 0)
-      .setDepth(4000).setScale(0.08).setAlpha(0).setTint(0xcfcfe0)
+    // 近づいてきたビルボードを対峙位置へなめらかに引き継ぐ
+    const targetScale = isBoss ? 0.72 : 0.5
+    const targetY = isBoss ? 222 : 235
+    let m: Phaser.GameObjects.Image
+    if (this.approach) {
+      m = this.approach.sprite
+      this.approach = null
+      m.setDepth(4000)
+    } else {
+      m = this.add.image(GAME_W / 2, 330, 'enemies', 0).setDepth(4000).setScale(0.1).setTint(0xb8b8cc)
+    }
+    this.monster = m
     this.tweens.add({
-      targets: this.monster, scale: 0.5, alpha: 1, y: 235,
-      duration: 900, ease: 'Sine.easeOut',
-    })
-    // ゆったり呼吸
-    this.tweens.add({
-      targets: this.monster, y: 245, duration: 1900, delay: 950,
-      yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      targets: m, x: GAME_W / 2, y: targetY, scale: targetScale,
+      duration: 550, ease: 'Sine.easeOut',
+      onComplete: () => {
+        m.setTint(0xcfcfe0)
+        this.tweens.add({
+          targets: m, y: targetY + 10, duration: 1900,
+          yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+        })
+      },
     })
 
-    // まわりの「もや」（正解ごとに晴れていく）
+    // もやパフ（ボスは多め）
     this.mistPuffs = []
-    const offsets: Array<[number, number, number]> = [
-      [-115, -60, 1.0], [115, -55, 1.0], [-95, 45, 0.9], [95, 50, 0.9], [0, -105, 1.1], [0, 90, 0.85],
-    ]
+    const offsets: Array<[number, number, number]> = isBoss
+      ? [[-135, -70, 1.2], [135, -65, 1.2], [-110, 55, 1.05], [110, 60, 1.05], [0, -125, 1.3], [0, 105, 1.0]]
+      : [[-100, -50, 0.9], [100, -45, 0.9], [0, -90, 1.0], [0, 75, 0.8]]
     offsets.forEach(([ox, oy, s], i) => {
-      const puff = this.add.image(mx + ox, 235 + oy, 'mist')
+      const puff = this.add.image(GAME_W / 2 + ox, targetY + oy, 'mist')
         .setDepth(4010).setScale(0).setAlpha(0.9)
       this.mistPuffs.push(puff)
-      this.tweens.add({ targets: puff, scale: s, duration: 700, delay: 350 + i * 70, ease: 'Sine.easeOut' })
+      this.tweens.add({ targets: puff, scale: s, duration: 600, delay: 250 + i * 60, ease: 'Sine.easeOut' })
       this.tweens.add({
-        targets: puff, x: mx + ox * 1.12, y: 235 + oy * 1.12,
-        duration: 2100 + i * 200, delay: 1100, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+        targets: puff, x: GAME_W / 2 + ox * 1.12, y: targetY + oy * 1.12,
+        duration: 2100 + i * 200, delay: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
       })
     })
 
-    this.buildPurifyMeter(enc.purifySteps)
-    sfx.wrong() // ぼわん、という気配（柔らかい音を流用）
-    voice.speak('あっ！ もやもやモンスターだ！')
+    // 浄化メーターは複数回のときだけ（ザコ1発はテンポ優先）
+    if (this.purifyStepsNeeded > 1) {
+      this.buildPurifyMeter(this.purifyStepsNeeded)
+    }
 
-    this.time.delayedCall(1100, () => this.startPurifyStep())
+    if (isBoss) {
+      voice.speak('おおきな もやもや ボスだ！ がんばれ！')
+    }
+    this.time.delayedCall(isBoss ? 1000 : 650, () => this.startPurifyStep())
   }
 
   private buildPurifyMeter(steps: number): void {
@@ -583,54 +628,81 @@ export class Ride25DScene extends Phaser.Scene {
       items.push(cell)
     }
     this.meterBox = this.add.container(GAME_W / 2, 150, items).setDepth(8000).setScale(0)
-    this.tweens.add({ targets: this.meterBox, scale: 1, duration: 320, delay: 500, ease: 'Back.easeOut' })
+    this.tweens.add({ targets: this.meterBox, scale: 1, duration: 320, delay: 400, ease: 'Back.easeOut' })
   }
 
-  /** 1回分の出題（正解ごとにシャッフル＆学習システムが次の文字を選ぶ） */
+  /** 1問分の出題。狙う文字は学習システムが選び、毎回明確に伝える */
   private startPurifyStep(): void {
-    const enc = this.encounter!
-    this.stepActive = true
+    this.stepActive = false
     this.wrongThisStep = 0
     this.hintReplayDone = false
     this.hintGlowDone = false
-    this.stepStartAt = this.time.now
 
-    // 次に狙う文字は学習システムが選ぶ（間隔反復）
-    this.currentTarget = pickNextLetter(enc.letterPool, this.stageData.correctKind)
+    // 出題文字: ボスは直近で練習した文字、ザコは開放済みプールから間隔反復で
     this.currentKind = this.stageData.correctKind
+    if (this.bossActive && this.practiced.length > 0) {
+      const pool = [...new Set(this.practiced)]
+      const candidates = pool.length > 1 ? pool.filter(l => l !== this.lastTarget) : pool
+      this.currentTarget = pickNextLetter(candidates, this.currentKind)
+    } else {
+      this.currentTarget = pickTargetLetter(
+        this.battle.letterPool, this.battle.poolStart, this.currentKind, this.lastTarget,
+      )
+    }
+    this.lastTarget = this.currentTarget
 
-    const distractors = Phaser.Utils.Array.Shuffle(
-      [...enc.distractorPool].filter(d => d.label !== this.currentTarget),
-    ).slice(0, enc.choiceCount - 1)
-    const specs: TargetSpec[] = Phaser.Utils.Array.Shuffle([
-      { label: this.currentTarget, kind: this.currentKind },
-      ...distractors,
-    ])
+    // 難易度調整: 正答率70〜85%帯を狙う
+    const attempts = this.sessionCorrect + this.wrongTotal
+    const accuracy = attempts > 0 ? this.sessionCorrect / attempts : 1
+    let choiceCount = this.battle.choiceCount
+    if (attempts >= 3 && accuracy < 0.7) choiceCount = Math.max(3, choiceCount - 1)
+    const useConfusables = attempts >= 3 && accuracy > 0.85
 
-    // 敵を囲むアーチ状の配置（参考画像のレイアウトA）
+    // 「今回狙う文字」を音声＋大きな表示で毎回明確に
+    this.announceTarget(this.currentTarget)
+    this.setMissionText(`「${this.currentTarget}」を ねらって！`)
+
+    const distractors = pickDistractors(this.currentTarget, choiceCount - 1, useConfusables)
+    const labels = Phaser.Utils.Array.Shuffle([this.currentTarget, ...distractors])
     const arc: Array<[number, number]> = [
       [-330, 300], [-185, 372], [0, 408], [185, 372], [330, 300],
     ]
-    const positions = arc.slice(0, specs.length)
-    specs.forEach((spec, i) => {
-      const [ox, oy] = positions[i]
-      this.createChoiceBubble(spec.label, spec.kind, GAME_W / 2 + ox, oy, i)
-    })
+    // 単調にならないよう、たまに左右反転
+    const positions = (this.enemyIndex + this.purifyStep) % 2 === 1
+      ? arc.map(([x, y]) => [-x, y] as [number, number])
+      : arc
 
-    recordSeen(this.currentTarget, this.currentKind)
-    this.setMissionText(`「${this.currentTarget}」を ねらって！`)
-    this.speakPrompt()
-    this.updateDebugHook()
+    this.time.delayedCall(650, () => {
+      labels.forEach((label, i) => {
+        const [ox, oy] = positions[i % positions.length]
+        this.createChoiceBubble(label, this.currentKind, GAME_W / 2 + ox, oy, i)
+      })
+      recordSeen(this.currentTarget, this.currentKind)
+      this.stepStartAt = this.time.now
+      this.stepActive = true
+      this.updateDebugHook()
+    })
+  }
+
+  /** 狙う文字のアナウンス（中サイズのフラッシュ表示＋読み上げ） */
+  private announceTarget(label: string): void {
+    voice.speak(`${label} を ねらって！`)
+    const glow = this.add.image(GAME_W / 2, 300, 'softglow')
+      .setDepth(8390).setScale(1.7).setAlpha(0.8).setTint(0xfff2c0)
+    const big = this.add.text(GAME_W / 2, 300, label, {
+      fontFamily: FONT, fontSize: '130px', fontStyle: 'bold', color: '#ffffff',
+    }).setOrigin(0.5).setDepth(8400).setStroke('#7a4dff', 12).setScale(0)
+    big.setShadow(0, 5, 'rgba(80,40,120,0.45)', 10)
+    this.tweens.add({ targets: big, scale: 1, duration: 240, ease: 'Back.easeOut' })
+    this.tweens.add({
+      targets: [big, glow], alpha: 0, y: 250, duration: 300, delay: 750,
+      ease: 'Cubic.easeIn',
+      onComplete: () => { big.destroy(); glow.destroy() },
+    })
   }
 
   private speakPrompt(): void {
-    if (this.phase !== 'encounter' || !this.stepActive) return
-    const templates = [
-      `${this.currentTarget} を ねらって、ビーム！`,
-      `${this.currentTarget} は どれかな？`,
-      `${this.currentTarget} を うって、もやを はらそう！`,
-    ]
-    voice.speak(templates[this.purifyStep % templates.length])
+    if (this.currentTarget) voice.speak(`${this.currentTarget} を ねらって！`)
   }
 
   private createChoiceBubble(label: string, kind: TargetKind, x: number, y: number, index: number): void {
@@ -657,12 +729,11 @@ export class Ride25DScene extends Phaser.Scene {
     })
   }
 
-  private clearBubbles(gentle = false): void {
+  private clearBubbles(): void {
     for (const b of this.bubbles) {
       b.alive = false
       this.tweens.add({
-        targets: b.container, scale: 0, alpha: gentle ? 0 : 0, duration: gentle ? 380 : 200,
-        ease: 'Back.easeIn',
+        targets: b.container, scale: 0, alpha: 0, duration: 300, ease: 'Back.easeIn',
         onComplete: () => b.container.destroy(),
       })
     }
@@ -676,6 +747,8 @@ export class Ride25DScene extends Phaser.Scene {
     this.stepActive = false
     const reaction = this.time.now - this.stepStartAt
     recordAnswer(this.currentTarget, this.currentKind, true, reaction)
+    this.sessionCorrect++
+    if (!this.practiced.includes(this.currentTarget)) this.practiced.push(this.currentTarget)
 
     this.hitJuiceAt(b.container.x, b.container.y, 0xffffff)
     b.alive = false
@@ -689,102 +762,128 @@ export class Ride25DScene extends Phaser.Scene {
     this.showBigLetter(b.label)
     this.wrongTapStreak = 0
 
-    // 浄化が1段すすむ
     this.purifyStep++
     this.advancePurify()
+    this.clearBubbles()
 
-    const enc = this.encounter!
-    this.clearBubbles(true)
-    if (this.purifyStep >= enc.purifySteps) {
-      this.time.delayedCall(950, () => this.completePurify())
+    if (this.purifyStep >= this.purifyStepsNeeded) {
+      this.time.delayedCall(850, () => this.completePurify())
     } else {
-      this.time.delayedCall(1150, () => this.startPurifyStep())
+      this.time.delayedCall(1250, () => this.startPurifyStep())
     }
     this.updateDebugHook()
   }
 
-  /** もやが1段晴れる（メーター・もやパフ・明るさ） */
   private advancePurify(): void {
-    const enc = this.encounter!
     const cell = this.meterCells[this.purifyStep - 1]
-    if (cell) {
+    if (cell && this.meterBox) {
       cell.setAlpha(1)
       this.tweens.add({ targets: cell, scaleY: 1.7, duration: 150, yoyo: true })
-      const glow = this.add.image(this.meterBox!.x - 150 + cell.x + 150, this.meterBox!.y, 'star')
+      const glow = this.add.image(this.meterBox.x + cell.x, this.meterBox.y, 'star')
         .setDepth(8001).setTint(0x9ff3ff).setScale(0.6)
       this.tweens.add({
         targets: glow, scale: 1.4, alpha: 0, duration: 450,
         onComplete: () => glow.destroy(),
       })
     }
-    // もやパフが2つずつ晴れる
-    const perStep = Math.ceil(this.mistPuffs.length / enc.purifySteps)
+    // もやが段階的に晴れる
+    const perStep = Math.ceil(this.mistPuffs.length / this.purifyStepsNeeded)
     const start = (this.purifyStep - 1) * perStep
     for (const puff of this.mistPuffs.slice(start, start + perStep)) {
       this.tweens.add({
         targets: puff, alpha: 0, scale: puff.scale * 1.5, duration: 600, ease: 'Sine.easeOut',
       })
     }
-    // 敵が明るく・やわらかくなる
     if (this.monster) {
-      const tints = [0xcfcfe0, 0xe2e2f0, 0xf3f3fa, 0xffffff]
-      const tint = tints[Math.min(this.purifyStep, tints.length - 1)]
-      this.monster.setTint(tint)
+      const t = this.purifyStep / this.purifyStepsNeeded
+      const v = Math.round(0xcf + (0xff - 0xcf) * t)
+      this.monster.setTint(Phaser.Display.Color.GetColor(v, v, Math.min(255, v + 8)))
       this.tweens.add({
         targets: this.monster, scale: this.monster.scale * 1.06, duration: 180, yoyo: true, ease: 'Sine.easeOut',
       })
     }
   }
 
-  /** 完全浄化 → ニコニコで空へ帰る → 前進再開 */
+  /** 完全浄化 → 笑顔で空へ → 進行再開（ボスは締めの演出強め） */
   private completePurify(): void {
     const m = this.monster
     if (!m) return
-    voice.speak('じょうか、かんりょう！ ありがとう！')
+    const isBoss = this.bossActive
+    const praises = ['やったー！', 'ピカピカ！', 'ありがとう！']
+    voice.speak(isBoss ? 'ボスを じょうか！ きみは もじレンジャーだ！' : praises[this.enemyIndex % praises.length])
     sfx.purify()
-    this.time.delayedCall(500, () => sfx.fanfare())
+    if (isBoss) this.time.delayedCall(400, () => sfx.fanfare())
 
-    // 笑顔フレームへクロスフェード
     const happy = this.add.image(m.x, m.y, 'enemies', 1)
       .setDepth(4001).setScale(m.scale).setAlpha(0)
-    this.tweens.add({ targets: happy, alpha: 1, duration: 450 })
-    this.tweens.add({ targets: m, alpha: 0, duration: 450 })
+    this.tweens.add({ targets: happy, alpha: 1, duration: 350 })
+    this.tweens.add({ targets: m, alpha: 0, duration: 350 })
     for (const puff of this.mistPuffs) {
-      this.tweens.add({ targets: puff, alpha: 0, duration: 300 })
+      this.tweens.add({ targets: puff, alpha: 0, duration: 250 })
     }
-
-    // キラキラ
     const sparkle = this.add.particles(0, 0, 'star', {
-      speed: { min: 60, max: 220 }, scale: { start: 0.9, end: 0 },
+      speed: { min: 60, max: isBoss ? 260 : 200 }, scale: { start: 0.9, end: 0 },
       lifespan: 800, tint: [0xffe066, 0xffffff, 0xc7f0ff], emitting: false,
     }).setDepth(4100)
-    sparkle.explode(22, m.x, m.y)
+    sparkle.explode(isBoss ? 30 : 16, m.x, m.y)
     this.time.delayedCall(1000, () => sparkle.destroy())
 
-    // 空へ帰る
+    const riseDelay = isBoss ? 800 : 450
     this.tweens.add({
-      targets: happy, y: m.y - 260, alpha: 0, scale: m.scale * 0.8,
-      duration: 1200, delay: 900, ease: 'Sine.easeIn',
+      targets: happy, y: m.y - 240, alpha: 0, scale: m.scale * 0.8,
+      duration: 900, delay: riseDelay, ease: 'Sine.easeIn',
     })
     if (this.meterBox) {
-      this.tweens.add({ targets: this.meterBox, alpha: 0, duration: 400, delay: 900 })
+      this.tweens.add({ targets: this.meterBox, alpha: 0, duration: 300, delay: riseDelay })
     }
 
-    // 前進再開
-    this.time.delayedCall(1900, () => {
+    this.time.delayedCall(isBoss ? 1800 : 1150, () => {
       m.destroy()
       happy.destroy()
       this.mistPuffs.forEach(p => p.destroy())
       this.mistPuffs = []
       this.meterBox?.destroy()
       this.meterBox = null
+      this.meterCells = []
       this.monster = null
-      this.encounter = null
-      this.setMissionText('すすめー！')
-      voice.speak('すすめー！')
-      this.startNextSegment()
-      this.updateDebugHook()
+      this.afterPurify(isBoss)
     })
+  }
+
+  /** 浄化後の進行: 次の敵 → （規定体数で）ボス → ゴール */
+  private afterPurify(wasBoss: boolean): void {
+    if (wasBoss) {
+      this.fillCounterCrown()
+      this.pending = 'goal'
+      this.nextEventAt = this.progress + this.battle.rideDistance * 0.9
+      this.setMissionText('ゴールへ すすめー！')
+      voice.speak('ゴールへ すすめー！')
+    } else {
+      this.fillCounterDot(this.enemyIndex)
+      this.enemyIndex++
+      if (this.enemyIndex >= this.battle.enemyCount) {
+        // ボス予兆: ゆっくり見上げる＋低い気配
+        this.pending = 'boss'
+        this.nextEventAt = this.progress + this.battle.rideDistance * 1.3
+        this.spawnApproaching(true)
+        this.setMissionText('おおきいのが くるぞ…！')
+        sfx.omen()
+        this.time.delayedCall(400, () => voice.speak('…おや？ おおきな もやもやが やってくる…！'))
+        this.tweens.add({ targets: this, lookUpY: 26, duration: 1400, ease: 'Sine.easeInOut' })
+      } else {
+        this.pending = 'enemy'
+        this.nextEventAt = this.progress + this.battle.rideDistance
+        this.spawnApproaching(false)
+        this.setMissionText('つぎの もやもやだ！')
+      }
+    }
+    if (wasBoss) {
+      this.tweens.add({ targets: this, lookUpY: 0, duration: 1000, ease: 'Sine.easeInOut' })
+    }
+    this.phase = 'riding'
+    this.targetSpeed = this.cruiseSpeed
+    this.bossActive = false
+    this.updateDebugHook()
   }
 
   private resolveWrong(b: ChoiceBubble): void {
@@ -795,15 +894,13 @@ export class Ride25DScene extends Phaser.Scene {
     this.wrongTapStreak++
     this.wrongTotal++
 
-    // ぷるぷる揺れるだけ。罰しない（浄化も進まない）
     this.tweens.add({ targets: b.container, angle: 10, duration: 60, yoyo: true, repeat: 3 })
     this.showGentleFeedback(b.container.x, b.container.y, `これは「${b.label}」だよ`)
     voice.speak(`これは、${b.label}、だよ`)
 
-    // 知識の誤りなので統計に記録（撃ち逃しは記録しない）
+    // 知識の誤りなので統計に記録（撃ち逃し・時間切れは記録しない）
     recordAnswer(this.currentTarget, this.currentKind, false)
 
-    // 2回間違えたら: 正解バブルを大きく
     if (this.wrongThisStep === 2) {
       const correct = this.bubbles.find(x => x.alive && x.label === this.currentTarget)
       if (correct) {
@@ -812,7 +909,6 @@ export class Ride25DScene extends Phaser.Scene {
         this.tweens.add({ targets: correct.container, scale: correct.baseScale, duration: 350, ease: 'Back.easeOut' })
       }
     }
-    // 3回連続で間違えたら: 一度だけ正解を光らせる
     if (this.wrongTapStreak >= 3) {
       this.wrongTapStreak = 0
       this.glowCorrectBubble()
@@ -843,18 +939,15 @@ export class Ride25DScene extends Phaser.Scene {
     const right = this.add.image(0, 0, 'hand-r').setOrigin(0.5, 1)
     this.handR = this.add.container(GAME_W - 175, GAME_H + 24, [right]).setDepth(7000)
     const left = this.add.image(0, 0, 'hand-l').setOrigin(0.5, 1).setScale(0.9)
-    this.handL = this.add.container(150, GAME_H + 60, [left]).setDepth(7000)
-    // ゆったり呼吸のスウェイ
+    const handL = this.add.container(150, GAME_H + 60, [left]).setDepth(7000)
     this.tweens.add({
       targets: this.handR, y: GAME_H + 30, duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     })
     this.tweens.add({
-      targets: this.handL, y: GAME_H + 66, duration: 1900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      targets: handL, y: GAME_H + 66, duration: 1900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     })
-    // 指先（ビーム発射点）: テクスチャ内 (52,34) → コンテナ原点(120,300)からのオフセット
     this.fingertip.x = this.handR.x + (52 - 120)
     this.fingertip.y = GAME_H + 24 - 300 + 34
-    // 指先の常時グロー
     const glow = this.add.image(this.fingertip.x, this.fingertip.y, 'softglow')
       .setDepth(7001).setScale(0.22).setTint(0xffe066).setAlpha(0.5)
     this.tweens.add({
@@ -878,7 +971,6 @@ export class Ride25DScene extends Phaser.Scene {
     if (now - this.lastShotAt < SHOT_COOLDOWN_MS) return
     this.lastShotAt = now
 
-    // 強めのオートエイム: タップ点の近くのバブルに吸い付く
     let best: ChoiceBubble | null = null
     let bestDist = Infinity
     for (const b of this.bubbles) {
@@ -896,7 +988,6 @@ export class Ride25DScene extends Phaser.Scene {
     sfx.shoot()
 
     if (!best) {
-      // 空撃ちは無罰。移動中の自由撃ちも楽しい
       this.fizzle(ix, iy)
       return
     }
@@ -907,7 +998,6 @@ export class Ride25DScene extends Phaser.Scene {
     }
   }
 
-  /** 指先から奥へ向かう、先細りのビーム */
   private drawBeam(tx: number, ty: number): void {
     const fx = this.fingertip.x
     const fy = this.fingertip.y
@@ -943,7 +1033,6 @@ export class Ride25DScene extends Phaser.Scene {
       targets: muzzle, scale: 0.2, alpha: 0, angle: 90, duration: 140,
       onComplete: () => muzzle.destroy(),
     })
-    // 手の反動（小さく）
     this.tweens.add({ targets: this.handR, x: GAME_W - 179, duration: 55, yoyo: true })
   }
 
@@ -957,13 +1046,11 @@ export class Ride25DScene extends Phaser.Scene {
     this.time.delayedCall(400, () => emitter.destroy())
   }
 
-  /** 着弾の juice（音・光・パーティクル・弱シェイク・ごく短いヒットストップ） */
   private hitJuiceAt(x: number, y: number, tint: number): void {
     sfx.pop()
     this.freezeUntil = this.time.now + 55
     this.tweens.timeScale = 0.05
     this.time.delayedCall(55, () => { this.tweens.timeScale = 1 })
-    // 酔い防止のためシェイクは 2D 版より弱く
     this.cameras.main.shake(60, 0.003)
 
     const dots = this.add.particles(0, 0, 'dot', {
@@ -1022,6 +1109,33 @@ export class Ride25DScene extends Phaser.Scene {
     }).setOrigin(0, 0.5).setStroke('#b8860b', 6)
     this.comboBadge = this.add.container(GAME_W - 150, 120, [star, this.comboText])
       .setDepth(8000).setAlpha(0)
+  }
+
+  /** ボスまでの進行カウンター（浄化した敵の数＋ボス王冠） */
+  private buildBattleCounter(): void {
+    const items: Phaser.GameObjects.GameObject[] = []
+    for (let i = 0; i < this.battle.enemyCount; i++) {
+      const dot = this.add.circle(i * 32, 0, 9, 0xffffff, 0.3).setStrokeStyle(2, 0xffffff, 0.7)
+      this.counterDots.push(dot)
+      items.push(dot)
+    }
+    this.counterCrown = this.add.text(this.battle.enemyCount * 32 + 4, 1, '👑', { fontSize: '24px' })
+      .setOrigin(0.5).setAlpha(0.45)
+    items.push(this.counterCrown)
+    this.add.container(70, 120, items).setDepth(8000)
+  }
+
+  private fillCounterDot(index: number): void {
+    const dot = this.counterDots[index]
+    if (!dot) return
+    dot.setFillStyle(0xffd94d, 1)
+    this.tweens.add({ targets: dot, scale: 1.6, duration: 180, yoyo: true })
+  }
+
+  private fillCounterCrown(): void {
+    if (!this.counterCrown) return
+    this.counterCrown.setAlpha(1)
+    this.tweens.add({ targets: this.counterCrown, scale: 1.7, duration: 250, yoyo: true })
   }
 
   private bumpCombo(): void {
@@ -1100,7 +1214,7 @@ export class Ride25DScene extends Phaser.Scene {
     recordStageClear(this.stageData.id, stars, nextStageOf(this.stageData.id)?.id ?? null)
     const result: StageResult = {
       stageId: this.stageData.id,
-      rounds: this.stageData.rounds,
+      rounds: this.battle.enemyCount * this.battle.purifyStepsPerEnemy + this.battle.bossPurifySteps,
       wrongCount: this.wrongTotal,
       maxCombo: this.maxCombo,
       stars,
@@ -1114,7 +1228,14 @@ export class Ride25DScene extends Phaser.Scene {
     if (import.meta.env.DEV) {
       // 自動テスト用フック（本番ビルドには含まれない）
       const w = window as unknown as Record<string, unknown>
-      w.__debugState = { phase: this.phase, purifyStep: this.purifyStep }
+      w.__debugState = {
+        phase: this.phase,
+        pending: this.pending,
+        enemyIndex: this.enemyIndex,
+        boss: this.bossActive,
+        purifyStep: this.purifyStep,
+        target: this.currentTarget,
+      }
       w.__debugTargets = this.bubbles
         .filter(b => b.alive)
         .map(b => ({
@@ -1129,18 +1250,15 @@ export class Ride25DScene extends Phaser.Scene {
     if (time < this.freezeUntil) return
     const dt = Math.min(delta / 1000, 0.05)
 
-    // ゆるい上下バブ（対峙中はほぼ止める。酔い防止）
     const bobAmp = this.phase === 'riding' || this.phase === 'slowing' ? 3 : 0.8
     this.bobY = Math.sin(time * 0.0021) * bobAmp
 
     this.updateRig(dt)
     this.renderWorld(time)
 
-    // 照準（なめらかに追従）
     this.reticle.x += (this.aim.x - this.reticle.x) * Math.min(1, dt * 14)
     this.reticle.y += (this.aim.y - this.reticle.y) * Math.min(1, dt * 14)
 
-    // バブルはその場でふわふわ（スクリーン空間・拡縮なし＝常に読みやすい）
     for (const b of this.bubbles) {
       if (!b.alive) continue
       b.container.x = b.baseX + Math.sin(time * 0.0014 + b.bobPhase) * 7
@@ -1148,7 +1266,7 @@ export class Ride25DScene extends Phaser.Scene {
       b.container.rotation = Math.sin(time * 0.0013 + b.bobPhase) * 0.05
     }
 
-    // 長く迷っていたら、やさしくヒント（対峙中のみ。時間切れは作らない）
+    // 長く迷っていたら、やさしくヒント（時間切れは作らない）
     if (this.phase === 'encounter' && this.stepActive) {
       const elapsed = time - this.stepStartAt
       if (elapsed > 12000 && !this.hintReplayDone) {

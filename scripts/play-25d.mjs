@@ -1,4 +1,4 @@
-// 2.5D オンレール対峙ステージ（ステージ1）の自動プレイ検証
+// 2.5D 連戦→ボスステージ（ステージ1）の自動プレイ検証
 import puppeteer from 'puppeteer-core'
 
 const OUT = process.argv[2] ?? 'C:/Users/chiri/AppData/Local/Temp/claude/C--Users-chiri/86c721f7-617a-43df-b8e7-f2425f7adb14/scratchpad'
@@ -22,66 +22,63 @@ await sleep(600)
 await page.evaluate(() => document.querySelector('button.big-button')?.click())
 await sleep(700)
 await page.evaluate(() => document.querySelectorAll('.stage-card')[0]?.click())
-await sleep(2300)
-await page.screenshot({ path: `${OUT}/r1-ride.png` })
+await sleep(2600)
+await page.screenshot({ path: `${OUT}/b1-approach.png` })
 
-// 対峙開始まで待つ
-for (let i = 0; i < 30; i++) {
-  const state = await page.evaluate(() => window.__debugState ?? null)
-  if (state?.phase === 'encounter') break
-  await sleep(400)
-}
-console.log('encounter reached:', await page.evaluate(() => JSON.stringify(window.__debugState)))
-await sleep(2600) // 敵登場＋バブル出現待ち
-await page.screenshot({ path: `${OUT}/r2-encounter.png` })
-
-// 3回浄化する
 const canvas = await page.$('canvas')
 const box = await canvas.boundingBox()
-for (let step = 0; step < 3; step++) {
-  // バブルが出るまで待つ
-  let target = null
-  for (let i = 0; i < 20; i++) {
-    target = await page.evaluate(() => (window.__debugTargets ?? []).find(t => t.correct) ?? null)
-    if (target) break
-    await sleep(300)
-  }
-  if (!target) { console.log(`step ${step}: no target!`); break }
-  // 1回だけ誤答も試す（やさしいフィードバックと統計の確認）
-  if (step === 1) {
-    const wrong = await page.evaluate(() => (window.__debugTargets ?? []).find(t => !t.correct) ?? null)
-    if (wrong) {
-      await page.mouse.click(box.x + (wrong.x * box.width) / 960, box.y + (wrong.y * box.height) / 640)
-      console.log(`step ${step}: intentionally hit wrong 「${wrong.label}」`)
-      await sleep(600)
-      await page.screenshot({ path: `${OUT}/r3-wrong.png` })
-      await sleep(900)
-    }
-  }
-  target = await page.evaluate(() => (window.__debugTargets ?? []).find(t => t.correct) ?? null)
-  await page.mouse.click(box.x + (target.x * box.width) / 960, box.y + (target.y * box.height) / 640)
-  console.log(`step ${step}: hit 「${target.label}」`)
-  if (step === 0) {
-    await sleep(450)
-    await page.screenshot({ path: `${OUT}/r4-purify1.png` })
-  }
-  if (step === 2) {
-    await sleep(1300)
-    await page.screenshot({ path: `${OUT}/r5-purified.png` })
-  }
-  await sleep(1400)
-}
+const state = () => page.evaluate(() => window.__debugState ?? null)
+const targets = () => page.evaluate(() => window.__debugTargets ?? [])
 
-// 前進再開 → ゴール → リザルトまで待つ
-for (let i = 0; i < 40; i++) {
+const lettersSeen = []
+let wrongDone = false
+let shotCount = 0
+let bossShotBanner = false
+
+for (let step = 0; step < 220; step++) {
   const done = await page.$('.result-heading')
   if (done) break
-  const state = await page.evaluate(() => JSON.stringify(window.__debugState ?? null))
-  if (i % 5 === 0) console.log('waiting...', state)
+  const s = await state()
+  const list = await targets()
+  const correct = list.find(t => t.correct)
+  if (s?.phase === 'encounter' && correct) {
+    if (!lettersSeen.includes(s.target)) lettersSeen.push(s.target)
+    // 2体目でわざと1回誤答（やさしいフィードバックと統計の確認）
+    if (s.enemyIndex === 1 && !wrongDone) {
+      const wrong = list.find(t => !t.correct)
+      if (wrong) {
+        wrongDone = true
+        await page.mouse.click(box.x + (wrong.x * box.width) / 960, box.y + (wrong.y * box.height) / 640)
+        console.log(`enemy ${s.enemyIndex}: intentionally wrong 「${wrong.label}」 (target=${s.target})`)
+        await sleep(500)
+        await page.screenshot({ path: `${OUT}/b3-wrong.png` })
+        await sleep(1000)
+        continue
+      }
+    }
+    if (s.boss && !bossShotBanner) {
+      bossShotBanner = true
+      await page.screenshot({ path: `${OUT}/b5-boss.png` })
+    }
+    await page.mouse.click(box.x + (correct.x * box.width) / 960, box.y + (correct.y * box.height) / 640)
+    shotCount++
+    console.log(`hit 「${s.target}」 (enemy=${s.enemyIndex}${s.boss ? ' BOSS' : ''}, step=${s.purifyStep})`)
+    if (shotCount === 1) {
+      await sleep(400)
+      await page.screenshot({ path: `${OUT}/b2-firsthit.png` })
+    }
+    await sleep(900)
+    continue
+  }
+  if (s?.pending === 'boss' && s?.phase !== 'encounter') {
+    await page.screenshot({ path: `${OUT}/b4-omen.png` })
+  }
   await sleep(500)
 }
-await sleep(400)
-await page.screenshot({ path: `${OUT}/r6-result.png` })
+
+await sleep(500)
+await page.screenshot({ path: `${OUT}/b6-result.png` })
+console.log('letters practiced this run:', lettersSeen.join(' '))
 
 const progress = await page.evaluate(() => localStorage.getItem('moji-ranger-progress'))
 console.log('progress:', progress)
