@@ -1,10 +1,9 @@
 import Phaser from 'phaser'
-import bgUrl from '../assets/bg.jpg'
-import enemiesUrl from '../assets/enemies.png'
 import { EventBus } from '../EventBus'
 import { sfx } from '../audio/sfx'
 import { voice } from '../audio/voice'
 import { nextStageOf } from '../data/stages'
+import { assetUrl } from './assetManifest'
 import { pickDistractors } from '../learning/distractors'
 import { pickNextLetter, pickTargetLetter } from '../learning/picker'
 import { recordAnswer, recordSeen, recordStageClear } from '../store/progress'
@@ -29,12 +28,14 @@ function project(worldX: number, z: number): { x: number; y: number; s: number }
   return { x: VP.x + worldX * s, y: VP.y + (GROUND_BASE_Y - VP.y) * s, s }
 }
 
-/** 街の置き物（ビル・木・街灯）のビルボード */
+/** 道の脇を流れていく光の粒（前進感を出すビルボード） */
 interface SceneryItem {
   sprite: Phaser.GameObjects.Image
   worldX: number
   z0: number
   baseScale: number
+  /** 地面からの浮遊高さ（ワールド単位） */
+  floatY: number
 }
 
 /** 前方から近づいてくる敵ビルボード */
@@ -92,6 +93,7 @@ export class Ride25DScene extends Phaser.Scene {
   // 一人称の手・照準
   private handR!: Phaser.GameObjects.Container
   private fingertip = { x: 0, y: 0 }
+  private bracelet = { x: 0, y: 0 } // ブレスレットの光（発射時に光らせる）
   private reticle!: Phaser.GameObjects.Container
   private aim = { x: GAME_W / 2, y: 330 }
 
@@ -140,8 +142,13 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   preload(): void {
-    this.load.image('bg', bgUrl)
-    this.load.spritesheet('enemies', enemiesUrl, { frameWidth: 350, frameHeight: 525 })
+    // 見た目素材は manifest 経由（public/assets/ 配下・丸ごと差し替え可能）
+    this.load.image('img-bg', assetUrl('background'))
+    this.load.image('img-bubble', assetUrl('bubble'))
+    this.load.image('img-hand-l', assetUrl('leftHand'))
+    this.load.image('img-hand-r', assetUrl('rightHand'))
+    this.load.image('img-monster', assetUrl('monster'))
+    this.load.image('img-boss', assetUrl('boss'))
   }
 
   create(): void {
@@ -235,32 +242,6 @@ export class Ride25DScene extends Phaser.Scene {
         canvas.refresh()
       }
     }
-    if (!this.textures.exists('bubble25')) {
-      const size = 160
-      const canvas = this.textures.createCanvas('bubble25', size, size)
-      if (canvas) {
-        const ctx = canvas.getContext()
-        const r = size / 2
-        const grad = ctx.createRadialGradient(r - 18, r - 22, 10, r, r, r)
-        grad.addColorStop(0, 'rgba(255,255,255,1)')
-        grad.addColorStop(0.7, 'rgba(252,250,255,0.98)')
-        grad.addColorStop(1, 'rgba(240,238,252,0.98)')
-        ctx.fillStyle = grad
-        ctx.beginPath()
-        ctx.arc(r, r, r - 3, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.strokeStyle = 'rgba(255,255,255,1)'
-        ctx.lineWidth = 5
-        ctx.beginPath()
-        ctx.arc(r, r, r - 5, 0, Math.PI * 2)
-        ctx.stroke()
-        ctx.fillStyle = 'rgba(255,255,255,0.9)'
-        ctx.beginPath()
-        ctx.ellipse(r - 26, r - 34, 20, 12, -0.6, 0, Math.PI * 2)
-        ctx.fill()
-        canvas.refresh()
-      }
-    }
     if (!this.textures.exists('mist')) {
       const size = 140
       const canvas = this.textures.createCanvas('mist', size, size)
@@ -275,440 +256,15 @@ export class Ride25DScene extends Phaser.Scene {
         canvas.refresh()
       }
     }
-    for (let v = 0; v < 3; v++) {
-      const key = `building${v}`
-      if (this.textures.exists(key)) continue
-      const w = 170 + v * 34
-      const h = 280 + v * 46
-      const canvas = this.textures.createCanvas(key, w, h)
-      if (!canvas) continue
-      const ctx = canvas.getContext()
-      const bodies = ['#3d2f78', '#46337f', '#37296b']
-      const neons = ['#ff6bb5', '#22d3ee', '#ffd94d']
-      ctx.fillStyle = bodies[v]
-      ctx.beginPath()
-      ctx.roundRect(6, 20, w - 12, h - 20, 18)
-      ctx.fill()
-      ctx.strokeStyle = neons[v]
-      ctx.lineWidth = 5
-      ctx.beginPath()
-      ctx.roundRect(10, 24, w - 20, h - 28, 15)
-      ctx.stroke()
-      ctx.fillStyle = neons[(v + 1) % 3]
-      ctx.beginPath()
-      ctx.arc(w / 2, 20, 14, Math.PI, 0)
-      ctx.fill()
-      ctx.fillStyle = 'rgba(255,231,150,0.9)'
-      for (let row = 0; row < Math.floor((h - 60) / 44); row++) {
-        for (let col = 0; col < Math.floor((w - 40) / 40); col++) {
-          if ((row * 3 + col + v) % 4 === 0) continue
-          ctx.beginPath()
-          ctx.roundRect(24 + col * 40, 44 + row * 44, 22, 26, 6)
-          ctx.fill()
-        }
-      }
-      canvas.refresh()
-    }
-    if (!this.textures.exists('tree')) {
-      const canvas = this.textures.createCanvas('tree', 120, 150)
-      if (canvas) {
-        const ctx = canvas.getContext()
-        ctx.fillStyle = '#7a5230'
-        ctx.beginPath()
-        ctx.roundRect(52, 90, 16, 60, 6)
-        ctx.fill()
-        ctx.fillStyle = '#3f9e52'
-        for (const [cx, cy, r] of [[60, 55, 42], [34, 74, 28], [88, 72, 28]] as const) {
-          ctx.beginPath()
-          ctx.arc(cx, cy, r, 0, Math.PI * 2)
-          ctx.fill()
-        }
-        ctx.fillStyle = 'rgba(120,220,140,0.55)'
-        ctx.beginPath()
-        ctx.arc(48, 46, 18, 0, Math.PI * 2)
-        ctx.fill()
-        canvas.refresh()
-      }
-    }
-    if (!this.textures.exists('lamp')) {
-      const canvas = this.textures.createCanvas('lamp', 60, 170)
-      if (canvas) {
-        const ctx = canvas.getContext()
-        ctx.fillStyle = '#5a4a8f'
-        ctx.beginPath()
-        ctx.roundRect(26, 30, 8, 140, 4)
-        ctx.fill()
-        const grad = ctx.createRadialGradient(30, 24, 3, 30, 24, 22)
-        grad.addColorStop(0, 'rgba(255,235,170,1)')
-        grad.addColorStop(1, 'rgba(255,235,170,0)')
-        ctx.fillStyle = grad
-        ctx.fillRect(0, 0, 60, 48)
-        ctx.fillStyle = '#ffe9a8'
-        ctx.beginPath()
-        ctx.arc(30, 24, 9, 0, Math.PI * 2)
-        ctx.fill()
-        canvas.refresh()
-      }
-    }
-    this.makePropTextures()
-    this.makeHandTexture('hand-r', false)
-    this.makeHandTexture('hand-l', true)
-  }
-
-  /** 公園の置き物（噴水・ベンチ・花壇・遊具）— 参考画像の公園デザイン */
-  private makePropTextures(): void {
-    if (!this.textures.exists('fountain')) {
-      const canvas = this.textures.createCanvas('fountain', 200, 210)
-      if (canvas) {
-        const ctx = canvas.getContext()
-        // 足元の光
-        const glow = ctx.createRadialGradient(100, 160, 10, 100, 160, 90)
-        glow.addColorStop(0, 'rgba(89,224,242,0.35)')
-        glow.addColorStop(1, 'rgba(89,224,242,0)')
-        ctx.fillStyle = glow
-        ctx.fillRect(0, 70, 200, 140)
-        // 土台
-        ctx.fillStyle = '#4a3d80'
-        ctx.beginPath()
-        ctx.ellipse(100, 190, 88, 16, 0, 0, Math.PI * 2)
-        ctx.fill()
-        // 下段の水盤
-        ctx.fillStyle = '#5647a0'
-        ctx.beginPath()
-        ctx.roundRect(28, 150, 144, 32, 14)
-        ctx.fill()
-        ctx.fillStyle = '#7fe8ff'
-        ctx.beginPath()
-        ctx.ellipse(100, 152, 74, 17, 0, 0, Math.PI * 2)
-        ctx.fill()
-        // 中段
-        ctx.fillStyle = '#5647a0'
-        ctx.fillRect(88, 112, 24, 40)
-        ctx.beginPath()
-        ctx.roundRect(56, 100, 88, 20, 10)
-        ctx.fill()
-        ctx.fillStyle = '#9df0ff'
-        ctx.beginPath()
-        ctx.ellipse(100, 101, 46, 11, 0, 0, Math.PI * 2)
-        ctx.fill()
-        // 上段
-        ctx.fillStyle = '#5647a0'
-        ctx.fillRect(94, 74, 12, 28)
-        ctx.fillStyle = '#c8f7ff'
-        ctx.beginPath()
-        ctx.ellipse(100, 72, 26, 8, 0, 0, Math.PI * 2)
-        ctx.fill()
-        // 噴き上がる水
-        ctx.strokeStyle = 'rgba(255,255,255,0.85)'
-        ctx.lineWidth = 4
-        ctx.lineCap = 'round'
-        for (const [dx, top] of [[-14, 46], [0, 36], [14, 46]] as const) {
-          ctx.beginPath()
-          ctx.moveTo(100, 66)
-          ctx.quadraticCurveTo(100 + dx, top, 100 + dx * 2, 64)
-          ctx.stroke()
-        }
-        ctx.fillStyle = 'rgba(255,255,255,0.9)'
-        for (const [px, py] of [[84, 52], [116, 52], [100, 32]] as const) {
-          ctx.beginPath()
-          ctx.arc(px, py, 3, 0, Math.PI * 2)
-          ctx.fill()
-        }
-        canvas.refresh()
-      }
-    }
-    if (!this.textures.exists('bench')) {
-      const canvas = this.textures.createCanvas('bench', 140, 90)
-      if (canvas) {
-        const ctx = canvas.getContext()
-        ctx.fillStyle = '#4a3d80'
-        ctx.fillRect(22, 58, 10, 30)
-        ctx.fillRect(108, 58, 10, 30)
-        ctx.fillStyle = '#8a6ac2'
-        ctx.beginPath()
-        ctx.roundRect(10, 46, 120, 14, 7)
-        ctx.fill()
-        ctx.beginPath()
-        ctx.roundRect(14, 12, 112, 12, 6)
-        ctx.fill()
-        ctx.fillStyle = '#6a51a8'
-        ctx.fillRect(24, 22, 8, 26)
-        ctx.fillRect(108, 22, 8, 26)
-        ctx.fillStyle = 'rgba(255,226,138,0.5)'
-        ctx.beginPath()
-        ctx.roundRect(14, 48, 112, 5, 3)
-        ctx.fill()
-        canvas.refresh()
-      }
-    }
-    if (!this.textures.exists('bush')) {
-      const canvas = this.textures.createCanvas('bush', 130, 100)
-      if (canvas) {
-        const ctx = canvas.getContext()
-        ctx.fillStyle = '#2f7a40'
-        for (const [cx, cy, r] of [[42, 66, 30], [90, 68, 27], [66, 50, 32]] as const) {
-          ctx.beginPath()
-          ctx.arc(cx, cy, r + 3, 0, Math.PI * 2)
-          ctx.fill()
-        }
-        ctx.fillStyle = '#3f9e52'
-        for (const [cx, cy, r] of [[42, 66, 30], [90, 68, 27], [66, 50, 32]] as const) {
-          ctx.beginPath()
-          ctx.arc(cx, cy, r, 0, Math.PI * 2)
-          ctx.fill()
-        }
-        ctx.fillStyle = 'rgba(120,220,140,0.5)'
-        ctx.beginPath()
-        ctx.arc(56, 42, 16, 0, Math.PI * 2)
-        ctx.fill()
-        // 花
-        for (const [fx, fy, fc] of [[36, 58, '#ff8fd0'], [70, 38, '#ffd94d'], [96, 60, '#ff8fd0'], [58, 72, '#ffd94d'], [84, 78, '#ff8fd0']] as const) {
-          ctx.fillStyle = fc
-          ctx.beginPath()
-          ctx.arc(fx, fy, 5, 0, Math.PI * 2)
-          ctx.fill()
-          ctx.fillStyle = '#ffffff'
-          ctx.beginPath()
-          ctx.arc(fx, fy, 2, 0, Math.PI * 2)
-          ctx.fill()
-        }
-        canvas.refresh()
-      }
-    }
-    if (!this.textures.exists('slide')) {
-      const canvas = this.textures.createCanvas('slide', 180, 150)
-      if (canvas) {
-        const ctx = canvas.getContext()
-        // タワー
-        ctx.fillStyle = '#3da9ff'
-        ctx.beginPath()
-        ctx.roundRect(22, 46, 54, 96, 10)
-        ctx.fill()
-        ctx.fillStyle = '#2a7fd0'
-        ctx.beginPath()
-        ctx.roundRect(34, 66, 30, 34, 8)
-        ctx.fill()
-        // 屋根
-        ctx.fillStyle = '#ffd94d'
-        ctx.beginPath()
-        ctx.arc(49, 46, 30, Math.PI, 0)
-        ctx.fill()
-        ctx.fillStyle = '#ff8fd0'
-        ctx.beginPath()
-        ctx.arc(49, 16, 6, 0, Math.PI * 2)
-        ctx.fill()
-        // すべり台
-        ctx.fillStyle = '#e0518f'
-        ctx.beginPath()
-        ctx.moveTo(74, 66)
-        ctx.lineTo(168, 128)
-        ctx.lineTo(168, 146)
-        ctx.lineTo(74, 92)
-        ctx.closePath()
-        ctx.fill()
-        ctx.fillStyle = '#ff6bb5'
-        ctx.beginPath()
-        ctx.moveTo(74, 70)
-        ctx.lineTo(164, 130)
-        ctx.lineTo(164, 140)
-        ctx.lineTo(74, 86)
-        ctx.closePath()
-        ctx.fill()
-        canvas.refresh()
-      }
-    }
-  }
-
-  /**
-   * 参考画像デザインの腕を描く: 太い赤の袖＋金の腕輪（光るボタン列）＋
-   * 光るウォッチ＋青い手袋（ハニカム模様）。mirror=true は左手（ひらいた手）。
-   */
-  private makeHandTexture(key: string, mirror: boolean): void {
-    if (this.textures.exists(key)) return
-    const w = 260, h = 340
-    const canvas = this.textures.createCanvas(key, w, h)
-    if (!canvas) return
-    const ctx = canvas.getContext()
-    ctx.save()
-    if (mirror) {
-      ctx.translate(w, 0)
-      ctx.scale(-1, 1)
-    }
-    ctx.lineCap = 'round'
-
-    // 腕（赤いスーツの袖）: 輪郭→本体→ハイライトの3層で立体感を出す
-    ctx.strokeStyle = '#8f2020'
-    ctx.lineWidth = 122
-    ctx.beginPath()
-    ctx.moveTo(222, 372)
-    ctx.lineTo(142, 188)
-    ctx.stroke()
-    ctx.strokeStyle = '#e04545'
-    ctx.lineWidth = 106
-    ctx.beginPath()
-    ctx.moveTo(224, 374)
-    ctx.lineTo(144, 190)
-    ctx.stroke()
-    ctx.strokeStyle = '#f47272'
-    ctx.lineWidth = 28
-    ctx.beginPath()
-    ctx.moveTo(254, 372)
-    ctx.lineTo(184, 216)
-    ctx.stroke()
-
-    // 金の腕輪（ボタン列つき）＋光るウォッチ
-    ctx.save()
-    ctx.translate(150, 212)
-    ctx.rotate(-0.42)
-    ctx.fillStyle = '#a86f14'
-    ctx.beginPath()
-    ctx.roundRect(-66, -32, 132, 64, 20)
-    ctx.fill()
-    ctx.fillStyle = '#f2b632'
-    ctx.beginPath()
-    ctx.roundRect(-60, -26, 120, 52, 16)
-    ctx.fill()
-    ctx.fillStyle = 'rgba(255,226,138,0.85)'
-    ctx.beginPath()
-    ctx.roundRect(-54, -22, 108, 16, 8)
-    ctx.fill()
-    // 光るボタン列
-    for (const [bx, bc] of [[-26, '#9ff3ff'], [0, '#ffffff'], [26, '#9ff3ff']] as const) {
-      ctx.fillStyle = bc
-      ctx.beginPath()
-      ctx.roundRect(bx - 10, 4, 20, 10, 5)
-      ctx.fill()
-    }
-    // ウォッチ本体（金枠＋シアンに光る画面）
-    ctx.fillStyle = '#a86f14'
-    ctx.beginPath()
-    ctx.roundRect(-40, -96, 80, 60, 16)
-    ctx.fill()
-    ctx.fillStyle = '#ffd94d'
-    ctx.beginPath()
-    ctx.roundRect(-36, -92, 72, 52, 13)
-    ctx.fill()
-    const wg = ctx.createRadialGradient(0, -66, 3, 0, -66, 24)
-    wg.addColorStop(0, '#eafcff')
-    wg.addColorStop(0.55, '#3fd9f2')
-    wg.addColorStop(1, '#0f7f99')
-    ctx.fillStyle = wg
-    ctx.beginPath()
-    ctx.arc(0, -66, 21, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.strokeStyle = 'rgba(255,255,255,0.8)'
-    ctx.lineWidth = 3
-    ctx.beginPath()
-    ctx.arc(-6, -72, 9, Math.PI * 0.9, Math.PI * 1.6)
-    ctx.stroke()
-    ctx.restore()
-
-    // 手袋（青・輪郭つき）
-    ctx.fillStyle = '#143a80'
-    ctx.beginPath()
-    ctx.ellipse(104, 104, 52, 46, -0.35, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.fillStyle = '#2f6fe0'
-    ctx.beginPath()
-    ctx.ellipse(104, 104, 47, 41, -0.35, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.fillStyle = 'rgba(30,79,176,0.6)'
-    ctx.beginPath()
-    ctx.ellipse(112, 118, 38, 26, -0.35, 0, Math.PI * 2)
-    ctx.fill()
-    if (!mirror) {
-      // 人差し指（ねらう指）: 輪郭→本体
-      ctx.strokeStyle = '#143a80'
-      ctx.lineWidth = 42
-      ctx.beginPath()
-      ctx.moveTo(86, 88)
-      ctx.lineTo(46, 28)
-      ctx.stroke()
-      ctx.strokeStyle = '#2f6fe0'
-      ctx.lineWidth = 32
-      ctx.beginPath()
-      ctx.moveTo(86, 88)
-      ctx.lineTo(46, 28)
-      ctx.stroke()
-      ctx.fillStyle = '#6b9bf5'
-      ctx.beginPath()
-      ctx.ellipse(50, 34, 10, 8, -0.9, 0, Math.PI * 2)
-      ctx.fill()
-      // にぎった指
-      for (const [fx, fy, rot] of [[132, 76, 0.2], [150, 96, 0.35], [156, 120, 0.5]] as const) {
-        ctx.fillStyle = '#143a80'
-        ctx.beginPath()
-        ctx.ellipse(fx, fy, 21, 17, rot, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.fillStyle = '#2758b8'
-        ctx.beginPath()
-        ctx.ellipse(fx, fy, 18, 14, rot, 0, Math.PI * 2)
-        ctx.fill()
-      }
-      // 親指
-      ctx.fillStyle = '#143a80'
-      ctx.beginPath()
-      ctx.ellipse(76, 134, 22, 15, 0.9, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.fillStyle = '#2f6fe0'
-      ctx.beginPath()
-      ctx.ellipse(76, 134, 19, 12, 0.9, 0, Math.PI * 2)
-      ctx.fill()
-    } else {
-      // ひらいた指（4本・付け根を手のひらの縁に分散）＋親指
-      for (const [sx, sy, tx, ty] of [
-        [74, 90, 42, 60], [88, 80, 64, 30], [104, 76, 96, 20], [120, 82, 128, 34],
-      ] as const) {
-        ctx.strokeStyle = '#143a80'
-        ctx.lineWidth = 30
-        ctx.beginPath()
-        ctx.moveTo(sx, sy)
-        ctx.lineTo(tx, ty)
-        ctx.stroke()
-        ctx.strokeStyle = '#2f6fe0'
-        ctx.lineWidth = 22
-        ctx.beginPath()
-        ctx.moveTo(sx, sy)
-        ctx.lineTo(tx, ty)
-        ctx.stroke()
-      }
-      ctx.strokeStyle = '#143a80'
-      ctx.lineWidth = 30
-      ctx.beginPath()
-      ctx.moveTo(126, 118)
-      ctx.lineTo(160, 94)
-      ctx.stroke()
-      ctx.strokeStyle = '#2f6fe0'
-      ctx.lineWidth = 22
-      ctx.beginPath()
-      ctx.moveTo(126, 118)
-      ctx.lineTo(160, 94)
-      ctx.stroke()
-    }
-    // ハニカム模様（うっすら）
-    ctx.strokeStyle = 'rgba(255,255,255,0.16)'
-    ctx.lineWidth = 2
-    for (const [hx, hy] of [[96, 96], [118, 112]] as const) {
-      ctx.beginPath()
-      for (let a = 0; a < 6; a++) {
-        const ang = (Math.PI / 3) * a - Math.PI / 6
-        const px = hx + Math.cos(ang) * 11
-        const py = hy + Math.sin(ang) * 11
-        if (a === 0) ctx.moveTo(px, py)
-        else ctx.lineTo(px, py)
-      }
-      ctx.closePath()
-      ctx.stroke()
-    }
-    ctx.restore()
-    canvas.refresh()
   }
 
   // ================================================================== world
 
   private buildSky(): void {
-    this.bgImage = this.add.image(GAME_W / 2, GAME_H / 2 - 40, 'bg').setDepth(0)
-    const scale = Math.max(GAME_W / this.bgImage.width, GAME_H / this.bgImage.height) * 1.04
+    // 描き込み背景（もじシティ夜景）。少し大きめに敷いて、進行に合わせた
+    // 横スライド＋上下バウンドのパララックスの余白を確保する
+    this.bgImage = this.add.image(GAME_W / 2, GAME_H / 2 - 20, 'img-bg').setDepth(0)
+    const scale = Math.max(GAME_W / this.bgImage.width, GAME_H / this.bgImage.height) * 1.09
     this.bgImage.setScale(scale)
     this.bgBaseY = this.bgImage.y
   }
@@ -718,49 +274,42 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   private buildScenery(): void {
+    // 街や木は描き込み背景に任せ、コード側は「道の脇を流れる光の粒」だけを
+    // 飛ばして前進スピード感を出す（加算合成のやわらかい光・お祭りの夜の雰囲気）
     const totalDistance = this.totalRouteDistance()
-    // 公園リング（道の近く）: 木・花壇・ベンチ・街灯・噴水・遊具 — 参考画像の公園
-    const parkKinds = ['tree', 'bush', 'bench', 'lamp', 'bush', 'fountain', 'tree', 'slide']
+    const tints = [0x59e0f2, 0xff8fd0, 0xffe066, 0xc7f0ff]
     let i = 0
-    for (let z0 = 200; z0 < totalDistance + 2000; z0 += 115, i++) {
+    for (let z0 = 160; z0 < totalDistance + 2000; z0 += 95, i++) {
       const side = i % 2 === 0 ? -1 : 1
-      const key = parkKinds[i % parkKinds.length]
-      const worldX = side * (245 + ((i * 97) % 105))
-      const baseScale = 0.85 + ((i * 31) % 30) / 100
-      const sprite = this.add.image(0, 0, key).setOrigin(0.5, 1).setVisible(false)
-      this.scenery.push({ sprite, worldX, z0, baseScale })
-    }
-    // ビル群リング（遠く）: ネオンのもじシティ
-    let j = 0
-    for (let z0 = 320; z0 < totalDistance + 2000; z0 += 165, j++) {
-      const side = j % 2 === 0 ? 1 : -1
-      const key = `building${j % 3}`
-      const worldX = side * (470 + ((j * 137) % 200))
-      const baseScale = 1.0 + ((j * 53) % 45) / 100
-      const sprite = this.add.image(0, 0, key).setOrigin(0.5, 1).setVisible(false)
-      this.scenery.push({ sprite, worldX, z0, baseScale })
+      const worldX = side * (210 + ((i * 97) % 270))
+      const baseScale = 0.14 + ((i * 31) % 20) / 100
+      const floatY = 30 + ((i * 53) % 150)
+      const sprite = this.add.image(0, 0, 'softglow')
+        .setVisible(false)
+        .setTint(tints[i % tints.length])
+        .setBlendMode(Phaser.BlendModes.ADD)
+      this.scenery.push({ sprite, worldX, z0, baseScale, floatY })
     }
   }
 
   private renderWorld(time: number): void {
     const yOff = this.bobY + this.lookUpY
+    // 背景パララックス: バウンドに追従しつつ、進行距離に応じてゆっくり横に流す
     this.bgImage.y = this.bgBaseY + yOff * 0.55
+    this.bgImage.x = GAME_W / 2 + Math.sin(this.progress * 0.0042) * 11
 
+    // 地面は描き込み背景に任せ、コードは「光のレール」（グリッド線＋
+    // シアン/ピンク交互の光る石が手前へ流れてくる）だけを重ねる
     const g = this.groundG
     g.clear()
-    g.fillGradientStyle(0x241a4a, 0x241a4a, 0x241a4a, 0x241a4a, 0, 0, 0.95, 0.95)
-    g.fillRect(0, VP.y + 6 + yOff, GAME_W, 130)
-    g.fillStyle(0x241a4a, 0.95)
-    g.fillRect(0, VP.y + 136 + yOff, GAME_W, GAME_H - VP.y - 136)
     const spacing = 130
     for (let k = 0; k < 16; k++) {
       const z = k * spacing - (this.progress % spacing)
       if (z < -60) continue
       const p = project(0, z)
-      const alpha = Math.min(0.36, 0.06 + p.s * 0.34)
+      const alpha = Math.min(0.22, 0.04 + p.s * 0.2)
       g.lineStyle(Math.max(1.5, 3 * p.s), 0x9b8ce0, alpha)
       g.lineBetween(VP.x - 900 * p.s, p.y + yOff, VP.x + 900 * p.s, p.y + yOff)
-      // 道の両端の光る石（参考画像の床ライト。シアン/ピンク交互）
       const worldIndex = k + Math.floor(this.progress / spacing)
       for (const side of [-1, 1] as const) {
         const q = project(side * 168, z)
@@ -771,28 +320,22 @@ export class Ride25DScene extends Phaser.Scene {
         g.fillCircle(q.x, q.y + yOff, Math.max(4, 12 * p.s))
       }
     }
-    for (const wx of [-430, -150, 150, 430]) {
-      const far = project(wx, 1900)
-      const near = project(wx, -60)
-      g.lineStyle(2, 0x8f7fd8, 0.22)
-      g.lineBetween(far.x, far.y + yOff, near.x, near.y + yOff)
-    }
 
+    // 道の脇を流れる光の粒（ふわっと明滅しながら手前へ）
     for (const item of this.scenery) {
       const z = item.z0 - this.progress
-      if (z < 30 || z > 1500) {
+      if (z < 20 || z > 1500) {
         item.sprite.setVisible(false)
         continue
       }
       const p = project(item.worldX, z)
+      const twinkle = 0.72 + 0.28 * Math.sin(time * 0.004 + item.z0)
       item.sprite
         .setVisible(true)
-        .setPosition(p.x, p.y + yOff)
+        .setPosition(p.x, p.y - item.floatY * p.s + yOff)
         .setScale(p.s * item.baseScale)
         .setDepth(60 + Math.round(1500 - z))
-        .setAlpha(Math.min(1, (1500 - z) / 260))
-      const dim = Math.round(150 + 105 * Math.min(1, p.s * 1.4))
-      item.sprite.setTint(Phaser.Display.Color.GetColor(dim, dim, Math.min(255, dim + 25)))
+        .setAlpha(Math.min(0.85, (1500 - z) / 300) * twinkle)
     }
 
     // 前方から近づいてくる敵
@@ -813,12 +356,19 @@ export class Ride25DScene extends Phaser.Scene {
     }
   }
 
+  /** モンスター画像の対峙時スケール（画像サイズに依存しないよう表示高さから逆算） */
+  private monsterScale(isBoss: boolean): number {
+    const tex = this.textures.get(isBoss ? 'img-boss' : 'img-monster').getSourceImage()
+    return (isBoss ? 430 : 305) / tex.height
+  }
+
   /** 次の敵を前方に出す（近づいてくるのが見える） */
   private spawnApproaching(isBoss: boolean): void {
-    const sprite = this.add.image(0, 0, 'enemies', 0)
+    // もやに取り憑かれている間はくすんだ色（浄化で本来の色に戻る）
+    const sprite = this.add.image(0, 0, isBoss ? 'img-boss' : 'img-monster')
       .setOrigin(0.5, 0.5).setDepth(3500).setVisible(false).setTint(0xb8b8cc)
     // 対峙位置（z≈90）でちょうど対峙サイズになる逆算スケール
-    const meetScale = isBoss ? 0.8 : 0.58
+    const meetScale = this.monsterScale(isBoss)
     const sAtMeet = FOCAL / (FOCAL + 90)
     this.approach = {
       sprite,
@@ -867,7 +417,7 @@ export class Ride25DScene extends Phaser.Scene {
     this.purifyStepsNeeded = isBoss ? this.battle.bossPurifySteps : this.battle.purifyStepsPerEnemy
 
     // 近づいてきたビルボードを対峙位置へなめらかに引き継ぐ（参考画像に合わせて大きめ）
-    const targetScale = isBoss ? 0.8 : 0.58
+    const targetScale = this.monsterScale(isBoss)
     const targetY = isBoss ? 218 : 235
     let m: Phaser.GameObjects.Image
     if (this.approach) {
@@ -875,7 +425,8 @@ export class Ride25DScene extends Phaser.Scene {
       this.approach = null
       m.setDepth(4000)
     } else {
-      m = this.add.image(GAME_W / 2, 330, 'enemies', 0).setDepth(4000).setScale(0.1).setTint(0xb8b8cc)
+      m = this.add.image(GAME_W / 2, 330, isBoss ? 'img-boss' : 'img-monster')
+        .setDepth(4000).setScale(0.1).setTint(0xb8b8cc)
     }
     this.monster = m
     this.tweens.add({
@@ -1038,13 +589,18 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   private createChoiceBubble(label: string, kind: TargetKind, x: number, y: number, index: number): void {
+    // シャボン玉画像は「空のオーブ」。中が透けるので、文字の下に
+    // パステルの半透明下敷き円をコードで描いて可読性を担保する
     const colorIndex = Phaser.Math.Between(0, BUBBLE_COLORS.length - 1)
-    const bubble = this.add.image(0, 0, 'bubble25').setTint(BUBBLE_COLORS[colorIndex])
+    const tex = this.textures.get('img-bubble').getSourceImage()
+    const imgScale = 160 / Math.max(tex.width, tex.height) // 直径160px 基準（radius 計算と一致）
+    const backing = this.add.circle(0, 0, 66, BUBBLE_COLORS[colorIndex], 0.82)
+    const bubble = this.add.image(0, 0, 'img-bubble').setScale(imgScale)
     const letter = this.add.text(0, 0, label, {
       fontFamily: FONT, fontSize: '62px', fontStyle: 'bold', color: '#33336b',
     }).setOrigin(0.5).setStroke('#ffffff', 8)
     // 文字バブルは常に不透明・最前面（敵と重なってもくっきり）
-    const container = this.add.container(x, y, [bubble, letter]).setDepth(6000)
+    const container = this.add.container(x, y, [backing, bubble, letter]).setDepth(6000)
     const baseScale = 0.76
     const choice: ChoiceBubble = {
       container, label, kind,
@@ -1146,10 +702,14 @@ export class Ride25DScene extends Phaser.Scene {
     sfx.purify()
     if (isBoss) this.time.delayedCall(400, () => sfx.fanfare())
 
-    const happy = this.add.image(m.x, m.y, 'enemies', 1)
-      .setDepth(4001).setScale(m.scale).setAlpha(0)
+    // 浄化完了: くすみが取れて本来の色に戻り、明るい光に包まれ、
+    // にっこり目のオーバーレイで「笑顔になった」ことを見せる（画像非依存の汎用演出）
+    m.clearTint()
+    const glow = this.add.image(m.x, m.y, 'softglow')
+      .setDepth(3999).setScale((m.displayWidth / 256) * 2.1).setTint(0xfff2c0).setAlpha(0)
+    this.tweens.add({ targets: glow, alpha: 0.9, duration: 350 })
+    const happy = this.makeHappyOverlay(m)
     this.tweens.add({ targets: happy, alpha: 1, duration: 350 })
-    this.tweens.add({ targets: m, alpha: 0, duration: 350 })
     for (const puff of this.mistPuffs) {
       this.tweens.add({ targets: puff, alpha: 0, duration: 250 })
     }
@@ -1161,10 +721,14 @@ export class Ride25DScene extends Phaser.Scene {
     this.time.delayedCall(1000, () => sparkle.destroy())
 
     const riseDelay = isBoss ? 800 : 350
+    // 笑顔になったモンスターが光ごとふわっと空へ帰っていく
     this.tweens.add({
-      targets: happy, y: m.y - 240, alpha: 0, scale: m.scale * 0.8,
+      targets: [m, happy, glow], y: `-=240`, alpha: 0,
       duration: 800, delay: riseDelay, ease: 'Sine.easeIn',
     })
+    // オーバーレイは表示ピクセル座標で描いているためスケール基準が異なる
+    this.tweens.add({ targets: m, scale: m.scale * 0.8, duration: 800, delay: riseDelay, ease: 'Sine.easeIn' })
+    this.tweens.add({ targets: happy, scale: 0.8, duration: 800, delay: riseDelay, ease: 'Sine.easeIn' })
     if (this.meterBox) {
       this.tweens.add({ targets: this.meterBox, alpha: 0, duration: 300, delay: riseDelay })
     }
@@ -1183,9 +747,36 @@ export class Ride25DScene extends Phaser.Scene {
     this.time.delayedCall(isBoss ? 1900 : 1300, () => {
       m.destroy()
       happy.destroy()
+      glow.destroy()
       puffs.forEach(p => p.destroy())
       meterBox?.destroy()
     })
+  }
+
+  /**
+   * 「にっこり目＋ほっぺ」のオーバーレイ。
+   * モンスター画像そのものは変えられないため、浄化完了の「笑顔」を
+   * 画像非依存のステッカー的な描画で重ねる（本番イラスト差し替え後も機能する）。
+   */
+  private makeHappyOverlay(m: Phaser.GameObjects.Image): Phaser.GameObjects.Container {
+    const w = m.displayWidth
+    const g = this.add.graphics()
+    // 閉じたにっこり目（∩）。元画像の目のあたりに重ねる
+    for (const exr of [-0.10, 0.045]) {
+      const ex = exr * w
+      const ey = -0.05 * w
+      g.fillStyle(0xe9f8d0, 1)
+      g.fillEllipse(ex, ey, 0.125 * w, 0.105 * w)
+      g.lineStyle(Math.max(4, 0.018 * w), 0x39511f, 1)
+      g.beginPath()
+      g.arc(ex, ey + 0.014 * w, 0.042 * w, Math.PI * 1.12, Math.PI * 1.88)
+      g.strokePath()
+    }
+    // ほっぺ
+    g.fillStyle(0xffb3c7, 0.55)
+    g.fillEllipse(-0.165 * w, 0.015 * w, 0.075 * w, 0.05 * w)
+    g.fillEllipse(0.11 * w, 0.015 * w, 0.075 * w, 0.05 * w)
+    return this.add.container(m.x, m.y, [g]).setDepth(4001).setAlpha(0)
   }
 
   /** 浄化後の進行: 次の敵 → （規定体数で）ボス → ゴール */
@@ -1267,6 +858,13 @@ export class Ride25DScene extends Phaser.Scene {
       if (!correct.alive || pulses >= 3) { ring.destroy(); return }
       pulses++
       ring.setPosition(correct.container.x, correct.container.y).setScale(1.6).setAlpha(0.95)
+      // 正解のオーブだけ金色のキラキラをまとわせる
+      const twinkle = this.add.particles(0, 0, 'star', {
+        speed: { min: 20, max: 80 }, scale: { start: 0.55, end: 0 }, lifespan: 550,
+        tint: [0xffe066, 0xffd94d, 0xfff6c8], blendMode: 'ADD', emitting: false,
+      }).setDepth(5991)
+      twinkle.explode(6, correct.container.x, correct.container.y)
+      this.time.delayedCall(700, () => twinkle.destroy())
       this.tweens.add({
         targets: ring, scale: 2.8, alpha: 0, duration: 500, ease: 'Cubic.easeOut',
         onComplete: pulse,
@@ -1278,23 +876,36 @@ export class Ride25DScene extends Phaser.Scene {
   // ============================================================= 手・ビーム
 
   private buildHands(): void {
-    const right = this.add.image(0, 0, 'hand-r').setOrigin(0.5, 1).setScale(1.12)
-    this.handR = this.add.container(GAME_W - 158, GAME_H + 34, [right]).setDepth(7000)
-    const left = this.add.image(0, 0, 'hand-l').setOrigin(0.5, 1).setScale(1.02)
-    const handL = this.add.container(148, GAME_H + 52, [left]).setDepth(7000)
+    // 用意した手のスプライト（右=発射ポーズ・左=ひらいた待機）。
+    // 文字バブル(6000)より下の深度に置き、文字を絶対に隠さない
+    const rTex = this.textures.get('img-hand-r').getSourceImage()
+    const rScale = 465 / rTex.height
+    const right = this.add.image(0, 0, 'img-hand-r').setOrigin(0.5, 1).setScale(rScale)
+    const handRBaseY = GAME_H + 30
+    this.handR = this.add.container(GAME_W - 168, handRBaseY, [right]).setDepth(5800)
+    const lTex = this.textures.get('img-hand-l').getSourceImage()
+    const left = this.add.image(0, 0, 'img-hand-l').setOrigin(0.5, 1).setScale(335 / lTex.height)
+    const handL = this.add.container(140, GAME_H + 46, [left]).setDepth(5800)
     this.tweens.add({
-      targets: this.handR, y: GAME_H + 40, duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      targets: this.handR, y: handRBaseY + 6, duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     })
     this.tweens.add({
-      targets: handL, y: GAME_H + 58, duration: 1900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      targets: handL, y: GAME_H + 52, duration: 1900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     })
-    // 指先（ビーム発射点）: テクスチャ内 (46,28)・中心130・高さ340・スケール1.12
-    this.fingertip.x = this.handR.x + (46 - 130) * 1.12
-    this.fingertip.y = GAME_H + 34 + (28 - 340) * 1.12
+    // 指先（ビーム発射点）とブレスレット位置: righthand.png 内の比率で算出
+    // （画像を差し替えたらここの比率だけ合わせる）
+    const rw = rTex.width * rScale
+    const rh = rTex.height * rScale
+    this.fingertip.x = this.handR.x + (0.472 - 0.5) * rw
+    this.fingertip.y = handRBaseY + (0.30 - 1) * rh
+    this.bracelet.x = this.handR.x + (0.54 - 0.5) * rw
+    this.bracelet.y = handRBaseY + (0.635 - 1) * rh
+    // 指先はブレスレットの光と同じシアンでほんのり明滅
     const glow = this.add.image(this.fingertip.x, this.fingertip.y, 'softglow')
-      .setDepth(7001).setScale(0.22).setTint(0xffe066).setAlpha(0.5)
+      .setDepth(5801).setScale(0.22).setTint(0x7fe8ff).setAlpha(0.45)
+      .setBlendMode(Phaser.BlendModes.ADD)
     this.tweens.add({
-      targets: glow, scale: 0.3, alpha: 0.7, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      targets: glow, scale: 0.32, alpha: 0.7, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     })
   }
 
@@ -1341,6 +952,10 @@ export class Ride25DScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * ブレスレットの光と同じシアン系のビーム:
+   * 白熱した芯＋外側グロー（加算合成）＋ライン上のキラキラ粒子＋着弾フレア
+   */
   private drawBeam(tx: number, ty: number): void {
     const fx = this.fingertip.x
     const fy = this.fingertip.y
@@ -1352,7 +967,7 @@ export class Ride25DScene extends Phaser.Scene {
     const wide = 15
     const tip = 4
 
-    const g = this.add.graphics().setDepth(7500)
+    const g = this.add.graphics().setDepth(7500).setBlendMode(Phaser.BlendModes.ADD)
     const poly = (w1: number, w2: number, color: number, alpha: number) => {
       g.fillStyle(color, alpha)
       g.fillPoints([
@@ -1362,21 +977,41 @@ export class Ride25DScene extends Phaser.Scene {
         new Phaser.Math.Vector2(fx - px * w1, fy - py * w1),
       ], true)
     }
-    poly(wide * 1.8, tip * 2.4, 0xffd94d, 0.25)
-    poly(wide, tip * 1.5, 0xfff3b0, 0.65)
-    poly(wide * 0.45, tip, 0xffffff, 1)
+    poly(wide * 2.2, tip * 2.6, 0x59e0f2, 0.4) // 外側グロー
+    poly(wide, tip * 1.5, 0x9ff3ff, 0.75)
+    poly(wide * 0.45, tip, 0xffffff, 1) // 白熱した芯
+    // 着弾フレア
     g.fillStyle(0xffffff, 0.95)
     g.fillCircle(tx, ty, 13)
-    g.fillStyle(0xffe066, 0.45)
-    g.fillCircle(tx, ty, 25)
+    g.fillStyle(0x7fe8ff, 0.55)
+    g.fillCircle(tx, ty, 27)
     this.tweens.add({ targets: g, alpha: 0, duration: 110, onComplete: () => g.destroy() })
 
-    const muzzle = this.add.image(fx, fy, 'star').setDepth(7501).setTint(0xffe066).setScale(0.9)
+    // ライン上を舞うキラキラ粒子
+    const sparks = this.add.particles(0, 0, 'dot', {
+      speed: { min: 10, max: 70 }, scale: { start: 0.5, end: 0 }, lifespan: 280,
+      tint: [0xffffff, 0x9ff3ff, 0x59e0f2], blendMode: 'ADD', emitting: false,
+      emitZone: { type: 'random', source: new Phaser.Geom.Line(fx, fy, tx, ty), quantity: 12 },
+    }).setDepth(7501)
+    sparks.explode(12)
+    this.time.delayedCall(400, () => sparks.destroy())
+
+    // 指先のマズルフラッシュ＋ブレスレットの発光
+    const muzzle = this.add.image(fx, fy, 'star').setDepth(7501).setTint(0x9ff3ff).setScale(0.9)
+      .setBlendMode(Phaser.BlendModes.ADD)
     this.tweens.add({
       targets: muzzle, scale: 0.2, alpha: 0, angle: 90, duration: 140,
       onComplete: () => muzzle.destroy(),
     })
-    this.tweens.add({ targets: this.handR, x: GAME_W - 179, duration: 55, yoyo: true })
+    const braceletFlash = this.add.image(this.bracelet.x, this.bracelet.y, 'softglow')
+      .setDepth(7502).setTint(0x7fe8ff).setScale(0.3).setAlpha(0.9)
+      .setBlendMode(Phaser.BlendModes.ADD)
+    this.tweens.add({
+      targets: braceletFlash, scale: 0.75, alpha: 0, duration: 220,
+      onComplete: () => braceletFlash.destroy(),
+    })
+    // 腕を軽く前へ押し出す（y は常時バウンド tween が使っているため x で表現）
+    this.tweens.add({ targets: this.handR, x: GAME_W - 186, duration: 55, yoyo: true })
   }
 
   private fizzle(x: number, y: number): void {
