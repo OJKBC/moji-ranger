@@ -1,4 +1,4 @@
-// 8ラウンド自動プレイして正解演出〜リザルトまで確認する開発用スクリプト
+// 全ステージを自動プレイして、正解演出・リザルト・マップ・進捗保存を検証する開発用スクリプト
 import puppeteer from 'puppeteer-core'
 
 const OUT = process.argv[2] ?? 'C:/Users/chiri/AppData/Local/Temp/claude/C--Users-chiri/86c721f7-617a-43df-b8e7-f2425f7adb14/scratchpad'
@@ -15,33 +15,90 @@ await page.setViewport({ width: 1024, height: 700 })
 page.on('pageerror', e => console.log('[pageerror]', e.message))
 
 await page.goto(URL, { waitUntil: 'networkidle2' })
+await page.evaluate(() => localStorage.clear())
+await page.reload({ waitUntil: 'networkidle2' })
 await sleep(600)
-await page.evaluate(() => document.querySelector('button.big-button')?.click())
-await sleep(2000)
 
-for (let round = 0; round < 8; round++) {
-  const target = await page.evaluate(() => {
-    const list = window.__debugTargets ?? []
-    return list.find(t => t.correct) ?? null
-  })
-  if (!target) { console.log(`round ${round}: no target found`); break }
-  const canvas = await page.$('canvas')
-  const box = await canvas.boundingBox()
-  const scaleX = box.width / 960
-  const scaleY = box.height / 640
-  await page.mouse.click(box.x + target.x * scaleX, box.y + target.y * scaleY)
-  console.log(`round ${round}: hit 「${target.label}」 at (${Math.round(target.x)}, ${Math.round(target.y)})`)
-  if (round === 0) {
-    await sleep(300)
-    await page.screenshot({ path: `${OUT}/5-hit.png` })
+// タイトル → マップ
+await page.evaluate(() => document.querySelector('button.big-button')?.click())
+await sleep(700)
+await page.screenshot({ path: `${OUT}/p2-map-before.png` })
+
+async function playStage(cardIndex, name) {
+  await page.evaluate(i => document.querySelectorAll('.stage-card')[i]?.click(), cardIndex)
+  await sleep(2200)
+  let shots = 0
+  for (let step = 0; step < 40; step++) {
+    const done = await page.$('.result-heading')
+    if (done) break
+    const target = await page.evaluate(() => {
+      const list = window.__debugTargets ?? []
+      return list.find(t => t.correct) ?? null
+    })
+    if (target) {
+      const canvas = await page.$('canvas')
+      const box = await canvas.boundingBox()
+      await page.mouse.click(box.x + (target.x * box.width) / 960, box.y + (target.y * box.height) / 640)
+      shots++
+      if (name === 'stage2' && shots === 2) {
+        await sleep(500)
+        await page.screenshot({ path: `${OUT}/p2-${name}-word.png` })
+      }
+      if (name === 'stage4' && shots === 1) {
+        await sleep(400)
+        await page.screenshot({ path: `${OUT}/p2-${name}-answer.png` })
+      }
+    }
+    await sleep(1150)
   }
-  await sleep(1500)
+  await sleep(2600)
+  await page.screenshot({ path: `${OUT}/p2-${name}-result.png` })
+  console.log(`${name}: cleared with ${shots} correct shots`)
+  // マップへ戻る
+  await page.evaluate(() => {
+    const btns = [...document.querySelectorAll('button')]
+    btns.find(b => b.textContent.includes('ステージマップ'))?.click()
+  })
+  await sleep(700)
 }
 
-await sleep(2500)
-await page.screenshot({ path: `${OUT}/6-result.png` })
+await playStage(0, 'stage1')
+await page.screenshot({ path: `${OUT}/p2-map-mid.png` })
+await playStage(1, 'stage2')
 
-// localStorage の学習記録も検証する
+// ステージ2クリア後のマップ途中経過（ゲーム画面キャプチャ用にステージ4を1枚）
+await playStage(2, 'stage3')
+await page.evaluate(i => document.querySelectorAll('.stage-card')[i]?.click(), 3)
+await sleep(2200)
+await page.screenshot({ path: `${OUT}/p2-stage4-game.png` })
+// ステージ4はそのまま最後までプレイ
+for (let step = 0; step < 40; step++) {
+  const done = await page.$('.result-heading')
+  if (done) break
+  const target = await page.evaluate(() => (window.__debugTargets ?? []).find(t => t.correct) ?? null)
+  if (target) {
+    const canvas = await page.$('canvas')
+    const box = await canvas.boundingBox()
+    await page.mouse.click(box.x + (target.x * box.width) / 960, box.y + (target.y * box.height) / 640)
+  }
+  await sleep(1150)
+}
+await sleep(2600)
+await page.screenshot({ path: `${OUT}/p2-stage4-result.png` })
+await page.evaluate(() => {
+  const btns = [...document.querySelectorAll('button')]
+  btns.find(b => b.textContent.includes('ステージマップ'))?.click()
+})
+await sleep(700)
+await page.screenshot({ path: `${OUT}/p2-map-after.png` })
+
+// リロードして進捗が復元されるか（DoD）
+await page.reload({ waitUntil: 'networkidle2' })
+await sleep(600)
+await page.evaluate(() => document.querySelector('button.big-button')?.click())
+await sleep(700)
+await page.screenshot({ path: `${OUT}/p2-map-reloaded.png` })
+
 const progress = await page.evaluate(() => localStorage.getItem('moji-ranger-progress'))
 console.log('progress:', progress)
 

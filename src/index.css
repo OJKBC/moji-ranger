@@ -139,6 +139,130 @@ body {
   font-size: 14px;
 }
 
+/* ---- ステージマップ ---- */
+
+.map-screen {
+  width: min(94vw, 860px);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px;
+  border-radius: 32px;
+  background: rgba(26, 16, 64, 0.55);
+  backdrop-filter: blur(4px);
+}
+
+.map-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.map-title {
+  color: #ffffff;
+  font-size: clamp(20px, 4.5vw, 30px);
+  text-shadow: 0 3px 0 #7a4dff, 0 6px 14px rgba(0, 0, 0, 0.45);
+}
+
+.map-total {
+  font-size: clamp(18px, 4vw, 26px);
+  font-weight: bold;
+  color: #ffd94d;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  min-width: 70px;
+  text-align: right;
+}
+
+.icon-button {
+  font-size: clamp(20px, 4.5vw, 28px);
+  background: rgba(255, 255, 255, 0.16);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  width: 54px;
+  height: 54px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.map-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+}
+
+.stage-card {
+  font-family: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 10px 14px;
+  border: none;
+  border-radius: 26px;
+  background: linear-gradient(180deg, #fffdf5, #ffe9c2);
+  box-shadow: 0 5px 0 #d6a24d, 0 10px 20px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: transform 0.08s ease;
+  position: relative;
+}
+
+.stage-card:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 #d6a24d, 0 5px 10px rgba(0, 0, 0, 0.3);
+}
+
+.stage-card.locked {
+  background: linear-gradient(180deg, #b9b3cc, #948da8);
+  box-shadow: 0 5px 0 #6f6885, 0 10px 20px rgba(0, 0, 0, 0.3);
+  opacity: 0.85;
+}
+
+.stage-number {
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  font-size: 18px;
+  font-weight: bold;
+  color: #b8860b;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 999px;
+  width: 28px;
+  height: 28px;
+  line-height: 28px;
+}
+
+.stage-card.locked .stage-number {
+  color: #6f6885;
+}
+
+.stage-icon {
+  font-size: clamp(40px, 9vw, 58px);
+  font-weight: bold;
+  color: #3a3a70;
+  line-height: 1.2;
+}
+
+.stage-name {
+  font-size: clamp(14px, 3vw, 17px);
+  font-weight: bold;
+  color: #3a3a70;
+}
+
+.stage-card.locked .stage-name {
+  color: #4a4560;
+}
+
+.mini-star {
+  font-size: 20px;
+  color: rgba(60, 60, 100, 0.25);
+}
+
+.mini-star.on {
+  color: #f5a623;
+  text-shadow: 0 0 8px rgba(255, 217, 77, 0.7);
+}
+
 /* ---- リザルト ---- */
 
 .result-heading {

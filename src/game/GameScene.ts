@@ -5,9 +5,9 @@ import enemiesUrl from '../assets/enemies.png'
 import { EventBus } from '../EventBus'
 import { sfx } from '../audio/sfx'
 import { voice } from '../audio/voice'
-import { HEROES } from '../data/stages'
+import { HEROES, nextStageOf } from '../data/stages'
 import { loadProgress, recordAnswer, recordSeen, recordStageClear } from '../store/progress'
-import type { Stage, StageResult, TargetKind } from '../types'
+import type { MathProblem, Stage, StageResult, TargetKind } from '../types'
 
 export const GAME_W = 960
 export const GAME_H = 640
@@ -17,6 +17,11 @@ const FONT = '"Hiragino Maru Gothic ProN", "BIZ UDPGothic", "Yu Gothic UI", "Mei
 const BUBBLE_COLORS = [0xffc2d4, 0xaddcff, 0xfff2ad, 0xc9f2b8, 0xe3ccff]
 const SHOT_COOLDOWN_MS = 110
 const AIM_ASSIST_RADIUS = 70
+/** 数字の読み（読み上げ用） */
+const DIGIT_READING: Record<string, string> = {
+  '1': 'いち', '2': 'に', '3': 'さん', '4': 'よん', '5': 'ご',
+  '6': 'ろく', '7': 'なな', '8': 'はち', '9': 'きゅう', '10': 'じゅう',
+}
 
 interface FloatingTarget {
   container: Phaser.GameObjects.Container
@@ -24,9 +29,11 @@ interface FloatingTarget {
   letter: Phaser.GameObjects.Text
   label: string
   kind: TargetKind
-  isCorrect: boolean
+  shape: 'bubble' | 'gate'
   vx: number
   vy: number
+  /** gate 用: 上下ゆらゆらの基準 y */
+  baseY: number
   baseScale: number
   radius: number
   swayPhase: number
@@ -34,8 +41,11 @@ interface FloatingTarget {
 }
 
 /**
- * ゲーム本体シーン。1ステージ分のコアループ
- * 「音声で出題 → 漂うターゲットを撃つ → 正解の快感 / やさしい誤答対応」を担う。
+ * ゲーム本体シーン。ステージデータの mode に応じて
+ *   find     … 正解を1つさがして撃つ
+ *   sequence … 決められた順序で撃って単語を完成させる
+ *   math     … 式を聞いて正解のゲートを撃つ
+ * の3つのコアループを動かす。
  */
 export class GameScene extends Phaser.Scene {
   private stageData: Stage
@@ -46,12 +56,14 @@ export class GameScene extends Phaser.Scene {
   private palm = { x: 0, y: 0 }
   private targets: FloatingTarget[] = []
   private missionBar!: Phaser.GameObjects.Container
+  private missionLabel!: Phaser.GameObjects.Text
   private comboBadge!: Phaser.GameObjects.Container
   private comboText!: Phaser.GameObjects.Text
   private roundDots: Phaser.GameObjects.Arc[] = []
 
   private roundIndex = 0
   private roundStartAt = 0
+  private lastCorrectAt = 0
   private stageStartAt = 0
   private combo = 0
   private maxCombo = 0
@@ -65,6 +77,11 @@ export class GameScene extends Phaser.Scene {
   private lastShotAt = -9999
   private acceptInput = true
   private roundActive = false
+
+  /** sequence モード: いま何文字目か */
+  private seqIndex = 0
+  /** math モード: 現在の問題 */
+  private currentProblem: MathProblem | null = null
 
   constructor(stage: Stage) {
     super('Game')
@@ -101,6 +118,40 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(450, () => this.spawnRound())
   }
 
+  // -------------------------------------------------------- mode helpers
+
+  /** いま撃つべきラベル */
+  private expectedLabel(): string {
+    const stage = this.stageData
+    if (stage.mode === 'sequence') return stage.correctSequence![this.seqIndex]
+    if (stage.mode === 'math') return this.currentProblem!.answer
+    return stage.correctAnswer!
+  }
+
+  /** 学習統計に使うキーと種別 */
+  private statKey(): { label: string; kind: TargetKind | 'math' } {
+    if (this.stageData.mode === 'math') {
+      return { label: this.currentProblem!.question, kind: 'math' }
+    }
+    return { label: this.expectedLabel(), kind: this.stageData.correctKind }
+  }
+
+  private setMissionText(text: string): void {
+    this.missionLabel.setText(text)
+  }
+
+  private updateDebugHook(): void {
+    if (import.meta.env.DEV) {
+      // 自動テスト用フック（本番ビルドには含まれない）
+      const expected = this.expectedLabel()
+      ;(window as unknown as Record<string, unknown>).__debugTargets = this.targets
+        .filter(t => t.alive)
+        .map(t => ({
+          x: t.container.x, y: t.container.y, label: t.label, correct: t.label === expected,
+        }))
+    }
+  }
+
   // ---------------------------------------------------------------- textures
 
   private makeTextures(): void {
@@ -129,6 +180,26 @@ export class GameScene extends Phaser.Scene {
         ctx.beginPath()
         ctx.ellipse(r - 26, r - 34, 20, 12, -0.6, 0, Math.PI * 2)
         ctx.fill()
+        canvas.refresh()
+      }
+    }
+    if (!this.textures.exists('gate')) {
+      const w = 220, h = 150
+      const canvas = this.textures.createCanvas('gate', w, h)
+      if (canvas) {
+        const ctx = canvas.getContext()
+        const grad = ctx.createLinearGradient(0, 0, 0, h)
+        grad.addColorStop(0, 'rgba(255,255,255,0.98)')
+        grad.addColorStop(1, 'rgba(255,255,255,0.8)')
+        ctx.fillStyle = grad
+        ctx.beginPath()
+        ctx.roundRect(4, 4, w - 8, h - 8, 34)
+        ctx.fill()
+        ctx.strokeStyle = 'rgba(255,255,255,0.95)'
+        ctx.lineWidth = 5
+        ctx.beginPath()
+        ctx.roundRect(7, 7, w - 14, h - 14, 30)
+        ctx.stroke()
         canvas.refresh()
       }
     }
@@ -205,14 +276,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   private buildMissionBar(): void {
-    const width = 600
+    const width = 620
     const bg = this.add.graphics()
     bg.fillStyle(0xffffff, 0.94)
     bg.fillRoundedRect(-width / 2, -37, width, 74, 26)
     bg.lineStyle(4, 0xffc94d, 1)
     bg.strokeRoundedRect(-width / 2, -37, width, 74, 26)
-    const label = this.add.text(-24, 0, this.stageData.missionText, {
-      fontFamily: FONT, fontSize: '34px', fontStyle: 'bold', color: '#3a3a70',
+    this.missionLabel = this.add.text(-24, 0, this.stageData.missionText, {
+      fontFamily: FONT, fontSize: '32px', fontStyle: 'bold', color: '#3a3a70',
     }).setOrigin(0.5)
     const speakerBg = this.add.circle(width / 2 - 46, 0, 27, 0xffc94d)
     const speaker = this.add.text(width / 2 - 46, 1, '🔊', { fontSize: '28px' }).setOrigin(0.5)
@@ -222,7 +293,7 @@ export class GameScene extends Phaser.Scene {
       sfx.uiTap()
       this.speakPrompt()
     })
-    this.missionBar = this.add.container(GAME_W / 2, 52, [bg, label, speakerBg, speaker]).setDepth(90)
+    this.missionBar = this.add.container(GAME_W / 2, 52, [bg, this.missionLabel, speakerBg, speaker]).setDepth(90)
     this.missionBar.setScale(0)
     this.tweens.add({ targets: this.missionBar, scale: 1, duration: 320, ease: 'Back.easeOut' })
   }
@@ -261,8 +332,17 @@ export class GameScene extends Phaser.Scene {
   // ----------------------------------------------------------------- rounds
 
   private speakPrompt(): void {
-    const prompts = this.stageData.voicePrompts
-    voice.speak(prompts[this.roundIndex % prompts.length])
+    const stage = this.stageData
+    if (stage.mode === 'math' && this.currentProblem) {
+      voice.speak(this.currentProblem.voicePrompt)
+      return
+    }
+    if (stage.mode === 'sequence' && this.seqIndex > 0) {
+      voice.speak(`つぎは、${this.expectedLabel()}！`)
+      return
+    }
+    const prompts = stage.voicePrompts
+    if (prompts.length > 0) voice.speak(prompts[this.roundIndex % prompts.length])
   }
 
   private spawnRound(): void {
@@ -272,41 +352,76 @@ export class GameScene extends Phaser.Scene {
     this.hintReplayDone = false
     this.hintGlowDone = false
     this.roundStartAt = this.time.now
+    this.lastCorrectAt = this.roundStartAt
+    this.seqIndex = 0
 
-    const count = this.struggledLastRound ? 3 : stage.targetsPerRound
-    const distractors = Phaser.Utils.Array.Shuffle([...stage.distractors]).slice(0, count - 1)
-    const labels: { label: string; kind: TargetKind; isCorrect: boolean }[] = [
-      { label: stage.correctAnswer, kind: stage.correctKind, isCorrect: true },
-      ...distractors.map(d => ({ label: d.label, kind: d.kind, isCorrect: false })),
-    ]
-    Phaser.Utils.Array.Shuffle(labels)
+    if (stage.mode === 'math') {
+      this.spawnMathRound()
+    } else if (stage.mode === 'sequence') {
+      this.spawnSequenceRound()
+    } else {
+      this.spawnFindRound()
+    }
 
-    // 3×2 のグリッドからスロットを選び、ジッターを加えて重なりなく配置する
+    this.speakPrompt()
+    this.updateDebugHook()
+  }
+
+  /** 3×2 のグリッドからスロットを選び、ジッターを加えて重なりなく配置する */
+  private pickSlots(count: number): { x: number; y: number }[] {
     const cols = [0.17, 0.5, 0.83].map(f => PLAY.left + f * (PLAY.right - PLAY.left))
     const rows = [0.22, 0.72].map(f => PLAY.top + f * (PLAY.bottom - PLAY.top))
     const slots: { x: number; y: number }[] = []
     for (const y of rows) for (const x of cols) slots.push({ x, y })
     Phaser.Utils.Array.Shuffle(slots)
-
-    labels.forEach((spec, i) => {
-      const slot = slots[i]
-      const x = Phaser.Math.Clamp(slot.x + Phaser.Math.Between(-45, 45), PLAY.left, PLAY.right)
-      const y = Phaser.Math.Clamp(slot.y + Phaser.Math.Between(-30, 30), PLAY.top, PLAY.bottom)
-      this.createTarget(spec.label, spec.kind, spec.isCorrect, x, y, i)
-    })
-
-    recordSeen(stage.correctAnswer, stage.correctKind)
-    this.speakPrompt()
-
-    if (import.meta.env.DEV) {
-      // 自動テスト用フック（本番ビルドには含まれない）
-      ;(window as unknown as Record<string, unknown>).__debugTargets = this.targets.map(t => ({
-        x: t.container.x, y: t.container.y, label: t.label, correct: t.isCorrect,
-      }))
-    }
+    return slots.slice(0, count).map(s => ({
+      x: Phaser.Math.Clamp(s.x + Phaser.Math.Between(-45, 45), PLAY.left, PLAY.right),
+      y: Phaser.Math.Clamp(s.y + Phaser.Math.Between(-30, 30), PLAY.top, PLAY.bottom),
+    }))
   }
 
-  private createTarget(label: string, kind: TargetKind, isCorrect: boolean, x: number, y: number, index: number): void {
+  private spawnFindRound(): void {
+    const stage = this.stageData
+    const count = this.struggledLastRound ? 3 : stage.targetsPerRound
+    const distractors = Phaser.Utils.Array.Shuffle([...stage.distractors]).slice(0, count - 1)
+    const labels = Phaser.Utils.Array.Shuffle([
+      { label: stage.correctAnswer!, kind: stage.correctKind },
+      ...distractors,
+    ])
+    const slots = this.pickSlots(labels.length)
+    labels.forEach((spec, i) => this.createBubbleTarget(spec.label, spec.kind, slots[i].x, slots[i].y, i))
+    recordSeen(stage.correctAnswer!, stage.correctKind)
+  }
+
+  private spawnSequenceRound(): void {
+    const stage = this.stageData
+    const seq = stage.correctSequence!
+    const count = this.struggledLastRound ? seq.length + 1 : stage.targetsPerRound
+    const distractors = Phaser.Utils.Array.Shuffle([...stage.distractors]).slice(0, Math.max(0, count - seq.length))
+    const labels = Phaser.Utils.Array.Shuffle([
+      ...seq.map(s => ({ label: s, kind: stage.correctKind })),
+      ...distractors,
+    ])
+    const slots = this.pickSlots(labels.length)
+    labels.forEach((spec, i) => this.createBubbleTarget(spec.label, spec.kind, slots[i].x, slots[i].y, i))
+    for (const s of seq) recordSeen(s, stage.correctKind)
+    this.setMissionText(`まずは「${seq[0]}」！`)
+  }
+
+  private spawnMathRound(): void {
+    const stage = this.stageData
+    const problem = stage.problems![this.roundIndex % stage.problems!.length]
+    this.currentProblem = problem
+    const choices = Phaser.Utils.Array.Shuffle([...problem.choices])
+    const y = PLAY.top + 0.55 * (PLAY.bottom - PLAY.top)
+    const xs = [0.16, 0.5, 0.84].map(f => PLAY.left + f * (PLAY.right - PLAY.left))
+    choices.forEach((choice, i) => this.createGateTarget(choice, xs[i], y, i))
+    recordSeen(problem.question, 'math')
+    this.setMissionText(`「${problem.question}」は どれ？`)
+  }
+
+  private createBubbleTarget(label: string, kind: TargetKind, x: number, y: number, index: number): void {
+    const isExpected = label === this.expectedLabel()
     const colorIndex = Phaser.Math.Between(0, BUBBLE_COLORS.length - 1)
     const bubble = this.add.image(0, 0, 'bubble').setTint(BUBBLE_COLORS[colorIndex])
     const letter = this.add.text(0, 0, label, {
@@ -314,15 +429,16 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setStroke('#ffffff', 8)
     const container = this.add.container(x, y, [bubble, letter]).setDepth(10)
 
-    const baseScale = this.struggledLastRound && isCorrect ? 0.98 : 0.78
+    const baseScale = this.struggledLastRound && isExpected ? 0.98 : 0.78
     const speedScale = this.struggledLastRound ? 0.55 : 1
     const angle = Phaser.Math.FloatBetween(0, Math.PI * 2)
     const speed = Phaser.Math.FloatBetween(22, 45) * speedScale
 
     const target: FloatingTarget = {
-      container, bubble, letter, label, kind, isCorrect,
+      container, bubble, letter, label, kind, shape: 'bubble',
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
+      baseY: y,
       baseScale,
       radius: 80 * baseScale,
       swayPhase: Phaser.Math.FloatBetween(0, Math.PI * 2),
@@ -334,6 +450,33 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({
       targets: container, scale: baseScale,
       duration: 300, delay: index * 55, ease: 'Back.easeOut',
+    })
+  }
+
+  private createGateTarget(label: string, x: number, y: number, index: number): void {
+    const colorIndex = index % BUBBLE_COLORS.length
+    const gate = this.add.image(0, 0, 'gate').setTint(BUBBLE_COLORS[colorIndex])
+    const letter = this.add.text(0, 0, label, {
+      fontFamily: FONT, fontSize: '76px', fontStyle: 'bold', color: '#33336b',
+    }).setOrigin(0.5).setStroke('#ffffff', 8)
+    const container = this.add.container(x, y, [gate, letter]).setDepth(10)
+
+    const target: FloatingTarget = {
+      container, bubble: gate, letter, label,
+      kind: 'number', shape: 'gate',
+      vx: 0, vy: 0,
+      baseY: y,
+      baseScale: 1,
+      radius: 95,
+      swayPhase: index * 1.7,
+      alive: true,
+    }
+    this.targets.push(target)
+
+    container.setScale(0)
+    this.tweens.add({
+      targets: container, scale: 1,
+      duration: 320, delay: index * 90, ease: 'Back.easeOut',
     })
   }
 
@@ -377,7 +520,7 @@ export class GameScene extends Phaser.Scene {
       this.fizzle(impactX, impactY)
       return
     }
-    if (best.isCorrect) {
+    if (best.label === this.expectedLabel()) {
       this.resolveCorrect(best)
     } else {
       this.resolveWrong(best)
@@ -424,12 +567,8 @@ export class GameScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------- correct
 
-  private resolveCorrect(t: FloatingTarget): void {
-    if (!this.roundActive) return
-    this.roundActive = false
-    const reaction = this.time.now - this.roundStartAt
-
-    // --- juice: ヒットストップ＋シェイク＋パーティクル（すべて着弾フレームで） ---
+  /** 着弾の juice（ヒットストップ・シェイク・パーティクル・ポップ）だけを行う */
+  private hitJuice(t: FloatingTarget): void {
     sfx.pop()
     this.freezeUntil = this.time.now + 60
     this.tweens.timeScale = 0.05
@@ -437,10 +576,10 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.shake(70, 0.0045)
 
     const { x, y } = t.container
-    const bubbleTint = t.bubble.tintTopLeft
+    const tint = t.bubble.tintTopLeft
     const dots = this.add.particles(0, 0, 'dot', {
       speed: { min: 70, max: 280 }, scale: { start: 0.85, end: 0 },
-      lifespan: 480, tint: [bubbleTint, 0xffffff, this.heroColor], emitting: false,
+      lifespan: 480, tint: [tint, 0xffffff, this.heroColor], emitting: false,
     }).setDepth(55)
     dots.explode(20, x, y)
     const stars = this.add.particles(0, 0, 'star', {
@@ -457,7 +596,7 @@ export class GameScene extends Phaser.Scene {
       onComplete: () => ring.destroy(),
     })
 
-    // シャボン玉が弾け、中からニコニコモンスターが空へ帰る
+    // ターゲットが弾け、中からニコニコモンスターが空へ帰る
     t.alive = false
     this.tweens.add({
       targets: t.container, scale: t.baseScale * 1.35, alpha: 0, duration: 90,
@@ -472,11 +611,9 @@ export class GameScene extends Phaser.Scene {
     })
     this.time.delayedCall(150, () => sfx.purify())
     this.time.delayedCall(90, () => sfx.sparkle())
+  }
 
-    // 正解の文字を大きく見せて読み上げる（音と形の結びつけ）
-    this.showBigLetter(t.label)
-
-    // コンボ
+  private bumpCombo(): void {
     this.combo++
     this.maxCombo = Math.max(this.maxCombo, this.combo)
     if (this.combo >= 2) {
@@ -486,11 +623,56 @@ export class GameScene extends Phaser.Scene {
       this.tweens.add({ targets: this.comboBadge, scale: 1, duration: 220, ease: 'Back.easeOut' })
     }
     this.wrongTapStreak = 0
+  }
 
-    // 学習記録
-    recordAnswer(t.label, t.kind, true, reaction)
+  private resolveCorrect(t: FloatingTarget): void {
+    if (!this.roundActive) return
+    const stage = this.stageData
+    const now = this.time.now
+    const reaction = now - this.lastCorrectAt
+    this.lastCorrectAt = now
 
-    // ラウンド進行
+    this.hitJuice(t)
+    this.bumpCombo()
+
+    const stat = this.statKey()
+
+    if (stage.mode === 'sequence') {
+      this.seqIndex++
+      recordAnswer(t.label, t.kind, true, reaction)
+      const seq = stage.correctSequence!
+      if (this.seqIndex < seq.length) {
+        // 途中の1文字: 文字を見せて、次を促す
+        this.showBigLetter(t.label, 0.7)
+        const next = seq[this.seqIndex]
+        this.setMissionText(`つぎは「${next}」！`)
+        voice.speak(t.label, { rate: 0.75 })
+        this.time.delayedCall(800, () => voice.speak(`つぎは、${next}！`))
+        this.updateDebugHook()
+        return
+      }
+      // 単語完成！
+      this.completeRound(() => this.celebrateWord(stage.word!, stage.celebration ?? '⭐'))
+      return
+    }
+
+    if (stage.mode === 'math') {
+      recordAnswer(stat.label, stat.kind, true, reaction)
+      const problem = this.currentProblem!
+      this.completeRound(() => this.showBigMath(problem))
+      return
+    }
+
+    // find モード
+    recordAnswer(stat.label, stat.kind, true, reaction)
+    this.completeRound(() => this.showBigLetter(t.label))
+  }
+
+  /** ラウンド完了の共通処理。celebration は完了演出コールバック */
+  private completeRound(celebration: () => void): void {
+    this.roundActive = false
+    celebration()
+
     this.struggledLastRound = this.wrongThisRound >= 2
     const dot = this.roundDots[this.roundIndex]
     if (dot) {
@@ -499,30 +681,90 @@ export class GameScene extends Phaser.Scene {
     }
     this.roundIndex++
 
-    // 残りの誤答ターゲットは静かに片付ける
     this.clearRoundTargets()
 
     if (this.roundIndex >= this.stageData.rounds) {
-      this.time.delayedCall(1100, () => this.endStage())
+      this.time.delayedCall(1400, () => this.endStage())
     } else {
-      this.time.delayedCall(900, () => this.spawnRound())
+      this.time.delayedCall(1000, () => this.spawnRound())
     }
   }
 
-  private showBigLetter(label: string): void {
+  /** 正解の文字を大きく見せて読み上げる（音と形の結びつけ） */
+  private showBigLetter(label: string, sizeFactor = 1): void {
     const glow = this.add.image(GAME_W / 2, GAME_H / 2 - 30, 'softglow')
-      .setDepth(79).setScale(2.6).setAlpha(0.85).setTint(0xfff2c0)
+      .setDepth(79).setScale(2.6 * sizeFactor).setAlpha(0.85).setTint(0xfff2c0)
     const big = this.add.text(GAME_W / 2, GAME_H / 2 - 30, label, {
-      fontFamily: FONT, fontSize: '200px', fontStyle: 'bold', color: '#ffffff',
+      fontFamily: FONT, fontSize: `${Math.round(200 * sizeFactor)}px`, fontStyle: 'bold', color: '#ffffff',
     }).setOrigin(0.5).setDepth(80).setStroke('#ff8fb0', 14)
     big.setShadow(0, 6, 'rgba(80,40,120,0.45)', 12)
     big.setScale(0)
-    voice.speak(label, { rate: 0.75 })
+    if (sizeFactor >= 1) voice.speak(label, { rate: 0.75 })
     this.tweens.add({ targets: big, scale: 1, duration: 260, ease: 'Back.easeOut' })
     this.tweens.add({
       targets: [big, glow], alpha: 0, y: GAME_H / 2 - 90, duration: 340, delay: 800,
       ease: 'Cubic.easeIn',
       onComplete: () => { big.destroy(); glow.destroy() },
+    })
+  }
+
+  /** sequence モード: 単語完成のお祝い（サポート演出） */
+  private celebrateWord(word: string, emoji: string): void {
+    const glow = this.add.image(GAME_W / 2, GAME_H / 2 - 40, 'softglow')
+      .setDepth(79).setScale(3).setAlpha(0.9).setTint(0xffe9f5)
+    const big = this.add.text(GAME_W / 2, GAME_H / 2 - 60, word, {
+      fontFamily: FONT, fontSize: '170px', fontStyle: 'bold', color: '#ffffff',
+    }).setOrigin(0.5).setDepth(80).setStroke('#ff8fb0', 14)
+    big.setShadow(0, 6, 'rgba(80,40,120,0.45)', 12)
+    big.setScale(0)
+    voice.speak(`${word}！ できたー！`, { rate: 0.85 })
+    this.tweens.add({ targets: big, scale: 1, duration: 300, ease: 'Back.easeOut' })
+
+    // なかまが よろこんで はねる
+    const friends: Phaser.GameObjects.Text[] = []
+    for (let i = 0; i < 3; i++) {
+      const fx = GAME_W / 2 + (i - 1) * 150
+      const friend = this.add.text(fx, GAME_H / 2 + 120, emoji, { fontSize: '68px' })
+        .setOrigin(0.5).setDepth(80).setScale(0)
+      friends.push(friend)
+      this.tweens.add({
+        targets: friend, scale: 1, duration: 260, delay: 150 + i * 120, ease: 'Back.easeOut',
+      })
+      this.tweens.add({
+        targets: friend, y: GAME_H / 2 + 80, duration: 340, delay: 150 + i * 120,
+        yoyo: true, repeat: 2, ease: 'Sine.easeOut',
+      })
+    }
+    this.time.delayedCall(400, () => sfx.fanfare())
+
+    this.tweens.add({
+      targets: [big, glow, ...friends], alpha: 0, duration: 320, delay: 1100,
+      ease: 'Cubic.easeIn',
+      onComplete: () => { big.destroy(); glow.destroy(); friends.forEach(f => f.destroy()) },
+    })
+  }
+
+  /** math モード: 式と答えを大きく見せて読み上げる */
+  private showBigMath(problem: MathProblem): void {
+    const glow = this.add.image(GAME_W / 2, GAME_H / 2 - 30, 'softglow')
+      .setDepth(79).setScale(2.8).setAlpha(0.85).setTint(0xfff2c0)
+    const eq = this.add.text(GAME_W / 2, GAME_H / 2 - 130, `${problem.question} =`, {
+      fontFamily: FONT, fontSize: '64px', fontStyle: 'bold', color: '#ffffff',
+    }).setOrigin(0.5).setDepth(80).setStroke('#7a4dff', 10)
+    const big = this.add.text(GAME_W / 2, GAME_H / 2 + 10, problem.answer, {
+      fontFamily: FONT, fontSize: '190px', fontStyle: 'bold', color: '#ffffff',
+    }).setOrigin(0.5).setDepth(80).setStroke('#ff8fb0', 14)
+    big.setShadow(0, 6, 'rgba(80,40,120,0.45)', 12)
+    big.setScale(0)
+    eq.setScale(0)
+    const reading = DIGIT_READING[problem.answer] ?? problem.answer
+    voice.speak(`せいかい！ こたえは、${reading}！`, { rate: 0.85 })
+    this.tweens.add({ targets: eq, scale: 1, duration: 220, ease: 'Back.easeOut' })
+    this.tweens.add({ targets: big, scale: 1, duration: 280, delay: 60, ease: 'Back.easeOut' })
+    this.tweens.add({
+      targets: [big, eq, glow], alpha: 0, y: '-=60', duration: 340, delay: 1000,
+      ease: 'Cubic.easeIn',
+      onComplete: () => { big.destroy(); eq.destroy(); glow.destroy() },
     })
   }
 
@@ -539,14 +781,28 @@ export class GameScene extends Phaser.Scene {
     // ぷるぷる揺れるだけ。罰しない
     this.tweens.add({ targets: t.container, angle: 10, duration: 60, yoyo: true, repeat: 3 })
 
-    // 「これは「お」だよ」のやさしい提示
-    this.showGentleFeedback(t)
-    voice.speak(`これは、${t.label}、だよ`)
+    const stage = this.stageData
+    const expected = this.expectedLabel()
+    const isLaterInSequence =
+      stage.mode === 'sequence' && stage.correctSequence!.slice(this.seqIndex + 1).includes(t.label)
 
-    // 出題文字に対する誤答として記録（後の再出題の材料）
-    recordAnswer(this.stageData.correctAnswer, this.stageData.correctKind, false)
+    if (isLaterInSequence) {
+      // 順番ちがい: 「さきに ね だよ」
+      this.showGentleFeedback(t, `さきに「${expected}」だよ！`)
+      voice.speak(`さきに、${expected}、だよ！`)
+    } else if (stage.mode === 'math') {
+      this.showGentleFeedback(t, 'うーん、ちがうみたい！')
+      voice.speak(`うーん！ ${this.currentProblem!.voicePrompt}`)
+    } else {
+      this.showGentleFeedback(t, `これは「${t.label}」だよ`)
+      voice.speak(`これは、${t.label}、だよ`)
+    }
 
-    // 2回間違えたら: 正解を大きく・全体をゆっくりに（このラウンド内で助ける）
+    // 出題に対する誤答として記録（後の再出題の材料）
+    const stat = this.statKey()
+    recordAnswer(stat.label, stat.kind, false)
+
+    // 2回間違えたら: やさしく助ける
     if (this.wrongThisRound === 2) this.easeCurrentRound()
     // 3回連続で間違えたら: 一度だけ正解を光らせる
     if (this.wrongTapStreak >= 3) {
@@ -555,8 +811,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private showGentleFeedback(t: FloatingTarget): void {
-    const text = `これは「${t.label}」だよ`
+  private showGentleFeedback(t: FloatingTarget, text: string): void {
     const label = this.add.text(0, 0, text, {
       fontFamily: FONT, fontSize: '27px', fontStyle: 'bold', color: '#3a3a70',
     }).setOrigin(0.5)
@@ -574,12 +829,18 @@ export class GameScene extends Phaser.Scene {
     })
   }
 
+  /** 誤答が続いたときの救済。find/sequence: 大きく＆ゆっくり、math: 正解を光らせる */
   private easeCurrentRound(): void {
+    if (this.stageData.mode === 'math') {
+      this.glowCorrectTarget()
+      return
+    }
+    const expected = this.expectedLabel()
     for (const t of this.targets) {
       if (!t.alive) continue
       t.vx *= 0.45
       t.vy *= 0.45
-      if (t.isCorrect) {
+      if (t.label === expected) {
         t.baseScale *= 1.3
         t.radius = 80 * t.baseScale
         this.tweens.add({ targets: t.container, scale: t.baseScale, duration: 350, ease: 'Back.easeOut' })
@@ -588,7 +849,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private glowCorrectTarget(): void {
-    const correct = this.targets.find(t => t.alive && t.isCorrect)
+    const expected = this.expectedLabel()
+    const correct = this.targets.find(t => t.alive && t.label === expected)
     if (!correct) return
     const ring = this.add.image(correct.container.x, correct.container.y, 'ring')
       .setDepth(9).setTint(0xffe066).setScale(2.2).setAlpha(0)
@@ -611,7 +873,7 @@ export class GameScene extends Phaser.Scene {
     this.acceptInput = false
     this.clearRoundTargets()
     sfx.fanfare()
-    voice.speak('すごーい！ ぜんぶ みつけたね！')
+    voice.speak('すごーい！ ぜんぶ クリアだね！')
 
     // 紙吹雪
     const confetti = this.add.particles(0, 0, 'dot', {
@@ -624,7 +886,7 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(1800, () => confetti.stop())
 
     const stars: 1 | 2 | 3 = this.wrongTotal <= 1 ? 3 : this.wrongTotal <= 4 ? 2 : 1
-    recordStageClear(stars)
+    recordStageClear(this.stageData.id, stars, nextStageOf(this.stageData.id)?.id ?? null)
     const result: StageResult = {
       stageId: this.stageData.id,
       rounds: this.stageData.rounds,
@@ -645,6 +907,12 @@ export class GameScene extends Phaser.Scene {
     for (const t of this.targets) {
       if (!t.alive) continue
       const c = t.container
+      if (t.shape === 'gate') {
+        // ゲートはその場でふわふわ上下する
+        c.y = t.baseY + Math.sin(time * 0.0018 + t.swayPhase) * 10
+        c.rotation = Math.sin(time * 0.0012 + t.swayPhase) * 0.03
+        continue
+      }
       c.x += t.vx * dt
       c.y += t.vy * dt
       if (c.x < PLAY.left) { c.x = PLAY.left; t.vx = Math.abs(t.vx) }
@@ -654,11 +922,11 @@ export class GameScene extends Phaser.Scene {
       c.rotation = Math.sin(time * 0.0016 + t.swayPhase) * 0.09
     }
 
-    // ターゲット同士のかんたんな分離（重なって読めなくなるのを防ぐ）
+    // バブル同士のかんたんな分離（重なって読めなくなるのを防ぐ）
     for (let i = 0; i < this.targets.length; i++) {
       for (let j = i + 1; j < this.targets.length; j++) {
         const a = this.targets[i], b = this.targets[j]
-        if (!a.alive || !b.alive) continue
+        if (!a.alive || !b.alive || a.shape === 'gate' || b.shape === 'gate') continue
         const dx = b.container.x - a.container.x
         const dy = b.container.y - a.container.y
         const dist = Math.hypot(dx, dy)

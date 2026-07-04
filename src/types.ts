@@ -16,6 +16,8 @@ export interface Hero {
 
 export type StageType = 'hiragana' | 'katakana' | 'number' | 'math' | 'boss'
 export type TargetKind = 'hiragana' | 'katakana' | 'number' | 'picture'
+/** ゲームプレイの型。find=正解さがし / sequence=順序撃ち / math=算数ゲート */
+export type StageMode = 'find' | 'sequence' | 'math'
 
 /** ステージデータ内のターゲット定義（出現位置・速度はランタイムで決まる） */
 export interface TargetSpec {
@@ -23,28 +25,44 @@ export interface TargetSpec {
   kind: TargetKind
 }
 
+/** 算数ゲート用の1問 */
+export interface MathProblem {
+  /** 表示する式。例: '2+1' */
+  question: string
+  /** 読み上げ文。例: '2 たす 1 は？' */
+  voicePrompt: string
+  answer: string
+  /** ゲートに出す選択肢（answer を含む3つ） */
+  choices: string[]
+}
+
 export interface Stage {
   id: string
   title: string
   type: StageType
+  mode: StageMode
   recommendedAgeMin: number
   recommendedAgeMax: number
   /** ミッションバーに表示する文（読めない子には音声＋文字強調で伝える） */
   missionText: string
   /** ラウンド開始時に読み上げる文の候補（バリエーション。順に循環） */
   voicePrompts: string[]
-  /** 正解ラベル（単一ターゲットステージ用） */
-  correctAnswer: string
+  /** 正解ラベル（find モード用） */
+  correctAnswer?: string
   correctKind: TargetKind
-  /** まぎらわしい選択肢 */
+  /** まぎらわしい選択肢（find / sequence モード用） */
   distractors: TargetSpec[]
-  /** 順序撃ちステージ用（フェーズ2）。例: ['ね','こ'] */
+  /** sequence モード: 撃つ順序。例: ['ね','こ'] */
   correctSequence?: string[]
-  /** 算数ゲートステージ用（フェーズ2） */
-  gates?: string[]
+  /** sequence モード: 完成する単語。例: 'ねこ' */
+  word?: string
+  /** sequence モード: 完成演出に使う絵文字。例: '🐱' */
+  celebration?: string
+  /** math モード: 出題する問題（ラウンドごとに順に出す） */
+  problems?: MathProblem[]
   /** 1ステージのラウンド数 */
   rounds: number
-  /** 1ラウンドに出すターゲット数（正解1＋誤答n-1） */
+  /** 1ラウンドに出すターゲット数（find: 正解1＋誤答n-1） */
   targetsPerRound: number
   reward: number
   difficulty: number
@@ -71,6 +89,9 @@ export interface PlayerProgress {
   letterStats: Record<string, LetterStats>
   numberStats: Record<string, LetterStats>
   mathStats: Record<string, LetterStats>
+  /** ステージごとのベスト★（schemaVersion 2 で追加） */
+  stageStars: Record<string, number>
+  /** 全ステージのベスト★合計 */
   totalStars: number
   playSessions: number
 }

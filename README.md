@@ -26,12 +26,19 @@ npm run dev
 ## ステージの追加方法
 
 `src/data/stages.ts` の `STAGES` 配列にオブジェクトを1件追加するだけ。
+配列の並び順がステージマップの順序・アンロック順になる。
+3つのゲームモードが使える:
+
+- **find** … 正解を1つさがして撃つ（`correctAnswer` を指定）
+- **sequence** … 順序どおりに撃って単語を完成（`correctSequence` / `word` / `celebration` を指定）
+- **math** … 式を聞いて正解のゲートを撃つ（`problems` を指定）
 
 ```ts
 {
   id: 'hiragana-ne',
   title: '「ね」をさがせ！',
   type: 'hiragana',
+  mode: 'find',
   correctAnswer: 'ね',
   correctKind: 'hiragana',
   distractors: [{ label: 'れ', kind: 'hiragana' }, { label: 'わ', kind: 'hiragana' }],
@@ -42,7 +49,7 @@ npm run dev
 }
 ```
 
-順序撃ち（`correctSequence`）・算数ゲート（`gates`）用のフィールドは型定義済み（実装はフェーズ2）。
+マップカードの絵文字は `src/StageMap.tsx` の `STAGE_ICONS` に追加する（未定義なら ⭐ になる）。
 
 ## 素材の差し替え方法
 
