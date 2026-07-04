@@ -25,6 +25,49 @@ export interface TargetSpec {
   kind: TargetKind
 }
 
+// ---- 2.5D オンレール対峙モード（renderer: '2.5d'）用 ----
+
+export type EncounterLayout = 'A_single_boss' | 'B_enemy_per_choice'
+
+/** 対峙エンカウントの定義（データ編集だけで追加できる） */
+export interface EncounterSpec {
+  id: string
+  layout: EncounterLayout
+  /** 完全浄化に必要な正解回数 */
+  purifySteps: number
+  /** 出す選択肢の数（難易度で増減） */
+  choiceCount: number
+  /** 次に狙う文字を学習システム（間隔反復）が選ぶ候補プール */
+  letterPool: string[]
+  /** まぎらわしい選択肢のプール */
+  distractorPool: TargetSpec[]
+  /** ボス対峙なら true（演出強化・フェーズ3） */
+  boss?: boolean
+}
+
+/** ルートの1区間。ride=前進 / encounter=対峙 */
+export type StageSegment =
+  | { type: 'ride'; distance: number }
+  | { type: 'encounter'; encounterId: string }
+
+/** 敵のランタイム状態 */
+export interface EnemyState {
+  id: string
+  /** 0..1。正解ごとに進む（=もやが晴れる） */
+  purifyMeter: number
+  mood: 'hazy' | 'clearing' | 'happy'
+}
+
+/** プレイヤーの視点・快適性設定（フェーズ3で設定画面から変更可能にする） */
+export interface PlayerViewState {
+  cameraProgress: number
+  aimX: number
+  aimY: number
+  isAutoAimEnabled: boolean
+  /** 0=なし 1=すこし 2=ふつう */
+  motionComfortLevel: 0 | 1 | 2
+}
+
 /** 算数ゲート用の1問 */
 export interface MathProblem {
   /** 表示する式。例: '2+1' */
@@ -41,6 +84,12 @@ export interface Stage {
   title: string
   type: StageType
   mode: StageMode
+  /** ゲームシーンの描画方式。'2.5d'=オンレール対峙 / 省略時 '2d'=固定画面（レガシー） */
+  renderer?: '2d' | '2.5d'
+  /** 2.5d 用: ルート構成（前進→対峙→前進…） */
+  segments?: StageSegment[]
+  /** 2.5d 用: 対峙エンカウント定義 */
+  encounters?: EncounterSpec[]
   recommendedAgeMin: number
   recommendedAgeMax: number
   /** ミッションバーに表示する文（読めない子には音声＋文字強調で伝える） */

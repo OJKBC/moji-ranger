@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react'
 import Phaser from 'phaser'
-import { GameScene, GAME_W, GAME_H } from './GameScene'
+import { GameScene } from './GameScene'
+import { Ride25DScene, GAME_W, GAME_H } from './Ride25DScene'
 import type { Stage } from '../types'
 
 /**
  * Phaser を React にマウントするラッパー。
+ * ステージの renderer に応じて 2.5D オンレール対峙シーン / 2D 固定画面シーンを選ぶ。
  * マウントごとに新しい Game インスタンスを作り、アンマウントで確実に破棄する。
  * （「もういっかい」は親が key を変えて再マウントするだけでよい）
  */
@@ -13,6 +15,7 @@ export function PhaserGame({ stage }: { stage: Stage }) {
 
   useEffect(() => {
     if (!containerRef.current) return
+    const scene = stage.renderer === '2.5d' ? new Ride25DScene(stage) : new GameScene(stage)
     const game = new Phaser.Game({
       type: Phaser.AUTO,
       parent: containerRef.current,
@@ -23,7 +26,7 @@ export function PhaserGame({ stage }: { stage: Stage }) {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
       },
-      scene: new GameScene(stage),
+      scene,
     })
     return () => {
       game.destroy(true)
