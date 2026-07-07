@@ -2,12 +2,11 @@ import Phaser from 'phaser'
 import { EventBus } from '../EventBus'
 import { sfx } from '../audio/sfx'
 import { voice } from '../audio/voice'
-import { nextStageOf } from '../data/stages'
 import { assetUrl } from './assetManifest'
 import { pickDistractors } from '../learning/distractors'
 import { pickNextLetter, pickTargetLetter } from '../learning/picker'
 import { recordAnswer, recordSeen, recordStageClear } from '../store/progress'
-import type { Stage, StageBattle, StageResult, TargetKind } from '../types'
+import type { DifficultyLevel, Stage, StageBattle, StageResult, TargetKind } from '../types'
 
 export const GAME_W = 960
 export const GAME_H = 640
@@ -70,6 +69,14 @@ type PendingEvent = 'enemy' | 'boss' | 'goal'
  */
 export class Ride25DScene extends Phaser.Scene {
   private stageData: Stage
+  /**
+   * 難易度 1〜3。
+   *   1: 基本の識別（従来相当。似た文字は正答率>85%のときだけ）
+   *   2: 似た文字を必ず混ぜる（letterStats の苦手ペア優先）＋プール広め
+   *   3: 難易度2＋選択肢を1つ増やす＋テンポをわずかに上げる
+   * 学習記録・オートエイム・撃ち逃し非記録などのルールは全難易度共通。
+   */
+  private level: DifficultyLevel
   private battle!: StageBattle
 
   // カメラリグ
@@ -136,9 +143,10 @@ export class Ride25DScene extends Phaser.Scene {
   private acceptInput = true
   private stageStartAt = 0
 
-  constructor(stage: Stage) {
+  constructor(stage: Stage, difficulty: DifficultyLevel = 1) {
     super('Game')
     this.stageData = stage
+    this.level = difficulty
   }
 
   preload(): void {
@@ -153,7 +161,7 @@ export class Ride25DScene extends Phaser.Scene {
 
   create(): void {
     // battle 未定義の 2.5d ステージにも安全なデフォルトを与える
-    this.battle = this.stageData.battle ?? {
+    const base = this.stageData.battle ?? {
       enemyCount: 3,
       purifyStepsPerEnemy: 1,
       bossPurifySteps: 3,
@@ -162,6 +170,16 @@ export class Ride25DScene extends Phaser.Scene {
       letterPool: [this.stageData.correctAnswer ?? 'あ'],
       poolStart: 5,
     }
+    // 難易度によるバトル定義の上書き（元データは変更しない）
+    this.battle = {
+      ...base,
+      // Lv3: 選択肢を1つ増やす（最大6・アーチ配置は選択肢数に追従）
+      choiceCount: this.level >= 3 ? Math.min(6, base.choiceCount + 1) : base.choiceCount,
+      // Lv2以上: 出題プールを広めに開放（似た文字ペアに早く出会える）
+      poolStart: this.level >= 2 ? Math.min(base.letterPool.length, base.poolStart + 3) : base.poolStart,
+    }
+    // Lv3: テンポをわずかに上げる（巡航速度 約15%アップ）
+    if (this.level >= 3) this.cruiseSpeed = Math.round(this.cruiseSpeed * 1.15)
 
     this.stageStartAt = this.time.now
     this.makeTextures()
@@ -506,28 +524,35 @@ export class Ride25DScene extends Phaser.Scene {
     }
     this.lastTarget = this.currentTarget
 
-    // 難易度調整: 正答率70〜85%帯を狙う
+    // 難易度調整: 正答率70〜85%帯を狙う（全難易度共通のセーフティ）
     const attempts = this.sessionCorrect + this.wrongTotal
     const accuracy = attempts > 0 ? this.sessionCorrect / attempts : 1
     let choiceCount = this.battle.choiceCount
     if (attempts >= 3 && accuracy < 0.7) choiceCount = Math.max(3, choiceCount - 1)
-    const useConfusables = attempts >= 3 && accuracy > 0.85
+    // Lv2以上は似た文字を常に混ぜる。Lv1は従来どおり正答率が高いときだけ
+    const useConfusables = this.level >= 2 || (attempts >= 3 && accuracy > 0.85)
 
     // 「今回狙う文字」は音だけで伝える（文字を見せると答えが分かってしまう）
     this.announceTarget(this.currentTarget)
 
-    const distractors = pickDistractors(this.currentTarget, choiceCount - 1, useConfusables)
+    const distractors = pickDistractors(this.currentTarget, choiceCount - 1, {
+      kind: this.currentKind,
+      useConfusables,
+      preferWeakPairs: this.level >= 2, // 苦手なペアを優先（固定羅列にしない）
+    })
     const labels = Phaser.Utils.Array.Shuffle([this.currentTarget, ...distractors])
-    // 敵を囲むアーチ配置（参考画像のレイアウトA: 敵の左右〜手前に重なる）
-    const arc: Array<[number, number]> = [
-      [-330, 245], [-185, 310], [0, 350], [185, 310], [330, 245],
-    ]
+    // 敵を囲むアーチ配置（選択肢数に応じて等間隔に生成。5個なら従来とほぼ同じ）
+    const n = labels.length
+    const arc: Array<[number, number]> = labels.map((_, i) => {
+      const u = n <= 1 ? 0 : (i / (n - 1)) * 2 - 1 // -1〜1
+      return [u * 350, 350 - u * u * 105]
+    })
     // 単調にならないよう、たまに左右反転
     const positions = (this.enemyIndex + this.purifyStep) % 2 === 1
       ? arc.map(([x, y]) => [-x, y] as [number, number])
       : arc
 
-    this.time.delayedCall(420, () => {
+    this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
       labels.forEach((label, i) => {
         const [ox, oy] = positions[i % positions.length]
         this.createChoiceBubble(label, this.currentKind, GAME_W / 2 + ox, oy, i)
@@ -648,10 +673,11 @@ export class Ride25DScene extends Phaser.Scene {
     this.advancePurify()
     this.clearBubbles()
 
+    // Lv3 はテンポをわずかに上げる
     if (this.purifyStep >= this.purifyStepsNeeded) {
-      this.time.delayedCall(700, () => this.completePurify())
+      this.time.delayedCall(this.level >= 3 ? 600 : 700, () => this.completePurify())
     } else {
-      this.time.delayedCall(1000, () => this.startPurifyStep())
+      this.time.delayedCall(this.level >= 3 ? 850 : 1000, () => this.startPurifyStep())
     }
     this.updateDebugHook()
   }
@@ -1180,9 +1206,10 @@ export class Ride25DScene extends Phaser.Scene {
     this.time.delayedCall(1800, () => confetti.stop())
 
     const stars: 1 | 2 | 3 = this.wrongTotal <= 1 ? 3 : this.wrongTotal <= 4 ? 2 : 1
-    recordStageClear(this.stageData.id, stars, nextStageOf(this.stageData.id)?.id ?? null)
+    recordStageClear(this.stageData.id, stars, this.level)
     const result: StageResult = {
       stageId: this.stageData.id,
+      difficulty: this.level,
       rounds: this.battle.enemyCount * this.battle.purifyStepsPerEnemy + this.battle.bossPurifySteps,
       wrongCount: this.wrongTotal,
       maxCombo: this.maxCombo,

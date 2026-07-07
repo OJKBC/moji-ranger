@@ -62,13 +62,18 @@ async function playStage(cardIndex, name) {
   await sleep(700)
 }
 
-await playStage(0, 'stage1')
+// カード並び: [0]ひらがな [1]カタカナ(ひらがなLv3で解放) [2]ねこ [3]すうじ [4]さんすう
+// ひらがなをLv1→2→3とクリアしてカタカナを解放し、全ステージを1回ずつ遊ぶ
+await playStage(0, 'stage1-lv1')
 await page.screenshot({ path: `${OUT}/p2-map-mid.png` })
-await playStage(1, 'stage2')
+await playStage(0, 'stage1-lv2')
+await playStage(0, 'stage1-lv3')
+await playStage(1, 'katakana-lv1')
+await playStage(2, 'stage2')
 
 // ステージ2クリア後のマップ途中経過（ゲーム画面キャプチャ用にステージ4を1枚）
-await playStage(2, 'stage3')
-await page.evaluate(i => document.querySelectorAll('.stage-card')[i]?.click(), 3)
+await playStage(3, 'stage3')
+await page.evaluate(i => document.querySelectorAll('.stage-card')[i]?.click(), 4)
 await sleep(2200)
 await page.screenshot({ path: `${OUT}/p2-stage4-game.png` })
 // ステージ4はそのまま最後までプレイ

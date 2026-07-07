@@ -1,25 +1,28 @@
 import { STAGES } from './data/stages'
-import { loadProgress } from './store/progress'
+import { clearedLevelOf, isStageUnlocked, loadProgress, nextLevelOf } from './store/progress'
 import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
-import type { Stage } from './types'
+import type { DifficultyLevel, Stage } from './types'
 
 /** ステージごとの見た目（マップカードの絵文字と色） */
 const STAGE_ICONS: Record<string, string> = {
   'hiragana-a': 'あ',
+  'katakana-a': 'ア',
   'word-neko': '🐱',
   'number-3': '3',
   'math-add-1': '➕',
 }
 
 interface Props {
-  onSelect: (stage: Stage) => void
+  onSelect: (stage: Stage, level: DifficultyLevel) => void
   onBack: () => void
 }
 
 /**
  * ステージマップ。読めない子でも進められるよう、
- * 大きなカード・絵文字・★表示・カギ🔒だけで構成する。
+ * 大きなカード・絵文字・カギ🔒だけで構成する。
+ * 各ステージは難易度1→2→3の3段階。カードには難易度進捗バッジを表示し、
+ * タップすると「次に挑戦する難易度」で始まる（全クリア後は3で遊べる）。
  */
 export function StageMap({ onSelect, onBack }: Props) {
   const progress = loadProgress()
@@ -31,7 +34,7 @@ export function StageMap({ onSelect, onBack }: Props) {
       return
     }
     sfx.uiTap()
-    onSelect(stage)
+    onSelect(stage, nextLevelOf(progress, stage.id))
   }
 
   return (
@@ -45,8 +48,8 @@ export function StageMap({ onSelect, onBack }: Props) {
       </div>
       <div className="map-grid">
         {STAGES.map((stage, i) => {
-          const unlocked = progress.unlockedStages.includes(stage.id)
-          const stars = progress.stageStars[stage.id] ?? 0
+          const unlocked = isStageUnlocked(stage, progress)
+          const cleared = clearedLevelOf(progress, stage.id)
           return (
             <button
               key={stage.id}
@@ -56,9 +59,19 @@ export function StageMap({ onSelect, onBack }: Props) {
               <span className="stage-number">{i + 1}</span>
               <span className="stage-icon">{unlocked ? STAGE_ICONS[stage.id] ?? '⭐' : '🔒'}</span>
               <span className="stage-name">{stage.title}</span>
-              <span className="stage-stars">
-                {[1, 2, 3].map(n => (
-                  <span key={n} className={n <= stars ? 'mini-star on' : 'mini-star'}>★</span>
+              {/* 難易度進捗: クリア済み=点灯 / 次に挑戦=ふちどり / 未到達=うすく */}
+              <span className="stage-levels">
+                {([1, 2, 3] as const).map(n => (
+                  <span
+                    key={n}
+                    className={
+                      n <= cleared ? 'level-badge done'
+                        : unlocked && n === cleared + 1 ? 'level-badge next'
+                          : 'level-badge'
+                    }
+                  >
+                    {n <= cleared ? '★' : n}
+                  </span>
                 ))}
               </span>
             </button>

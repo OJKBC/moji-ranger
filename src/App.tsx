@@ -1,25 +1,49 @@
 import { useCallback, useEffect, useState } from 'react'
 import { EventBus } from './EventBus'
 import { PhaserGame } from './game/PhaserGame'
-import { STAGES, nextStageOf } from './data/stages'
+import { STAGES } from './data/stages'
 import { StageMap } from './StageMap'
-import { loadProgress } from './store/progress'
+import { isStageUnlocked, loadProgress, nextLevelOf } from './store/progress'
 import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
-import type { Stage, StageResult } from './types'
+import type { DifficultyLevel, Stage, StageResult } from './types'
 import bgUrl from './assets/bg.jpg'
 import heroesUrl from './assets/heroes.png'
 
 type Screen = 'title' | 'map' | 'game' | 'result'
 
+/**
+ * リザルト後の「つぎ」の行き先。
+ * 難易度3未満なら同じステージの次の難易度、難易度3クリア後は
+ * マップ順で次の解放済みステージ（その子の次の挑戦難易度）へ。
+ */
+function nextChallengeOf(result: StageResult): { stage: Stage; level: DifficultyLevel } | null {
+  const stage = STAGES.find(s => s.id === result.stageId)
+  if (!stage) return null
+  if (result.difficulty < 3) {
+    return { stage, level: (result.difficulty + 1) as DifficultyLevel }
+  }
+  const progress = loadProgress()
+  const index = STAGES.findIndex(s => s.id === result.stageId)
+  for (let i = index + 1; i < STAGES.length; i++) {
+    if (isStageUnlocked(STAGES[i], progress)) {
+      return { stage: STAGES[i], level: nextLevelOf(progress, STAGES[i].id) }
+    }
+  }
+  return null
+}
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>('title')
   const [stage, setStage] = useState<Stage>(STAGES[0])
+  const [difficulty, setDifficulty] = useState<DifficultyLevel>(1)
   const [result, setResult] = useState<StageResult | null>(null)
+  const [confirmQuit, setConfirmQuit] = useState(false)
   const [playKey, setPlayKey] = useState(0)
 
   useEffect(() => {
     const onClear = (r: StageResult) => {
+      setConfirmQuit(false)
       setResult(r)
       setScreen('result')
     }
@@ -37,8 +61,10 @@ export default function App() {
     setScreen('map')
   }, [])
 
-  const playStage = useCallback((s: Stage) => {
+  const playStage = useCallback((s: Stage, level: DifficultyLevel) => {
     setStage(s)
+    setDifficulty(level)
+    setConfirmQuit(false)
     setPlayKey(k => k + 1)
     setScreen('game')
   }, [])
@@ -48,8 +74,27 @@ export default function App() {
     setScreen('title')
   }, [])
 
-  const next = result ? nextStageOf(result.stageId) : null
-  const nextUnlocked = next ? loadProgress().unlockedStages.includes(next.id) : false
+  // ゲーム中の「もどる」: いきなり離脱せず、一時停止して確認を挟む
+  const askQuit = useCallback(() => {
+    sfx.uiTap()
+    EventBus.emit('game-pause')
+    setConfirmQuit(true)
+  }, [])
+
+  const continueGame = useCallback(() => {
+    sfx.uiTap()
+    setConfirmQuit(false)
+    EventBus.emit('game-resume')
+  }, [])
+
+  const quitToMap = useCallback(() => {
+    sfx.uiTap()
+    voice.cancel()
+    setConfirmQuit(false)
+    setScreen('map') // PhaserGame はアンマウントで破棄される
+  }, [])
+
+  const next = result ? nextChallengeOf(result) : null
 
   return (
     <div className="app" style={{ backgroundImage: `url(${bgUrl})` }}>
@@ -70,10 +115,37 @@ export default function App() {
 
       {screen === 'map' && <StageMap onSelect={playStage} onBack={backToTitle} />}
 
-      {screen === 'game' && <PhaserGame key={playKey} stage={stage} />}
+      {screen === 'game' && (
+        <>
+          <PhaserGame key={playKey} stage={stage} difficulty={difficulty} />
+          <button className="back-button" onClick={askQuit} aria-label="ステージマップへもどる">
+            ⬅
+          </button>
+          {confirmQuit && (
+            <div className="confirm-overlay">
+              <div className="confirm-box">
+                <p className="confirm-text">⏸ やめる？</p>
+                <button className="big-button" onClick={continueGame}>
+                  ▶ つづける
+                </button>
+                <button className="sub-button" onClick={quitToMap}>
+                  🗺️ やめる
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
       {screen === 'result' && result && (
         <div className="overlay-screen">
+          <button
+            className="back-button"
+            onClick={() => { sfx.uiTap(); setScreen('map') }}
+            aria-label="ステージマップへもどる"
+          >
+            ⬅
+          </button>
           <h2 className="result-heading">よくできました！</h2>
           <div className="result-stars">
             {[1, 2, 3].map(n => (
@@ -87,17 +159,19 @@ export default function App() {
             ))}
           </div>
           <p className="result-detail">
-            {STAGES.find(s => s.id === result.stageId)?.title ?? ''} クリア！
+            {STAGES.find(s => s.id === result.stageId)?.title ?? ''} レベル{result.difficulty} クリア！
             {result.maxCombo >= 3 && <> さいだい れんぞく ×{result.maxCombo}！</>}
           </p>
-          {next && nextUnlocked && (
-            <button className="big-button" onClick={() => { sfx.uiTap(); playStage(next) }}>
-              ⏩ つぎのステージ
+          {next && (
+            <button className="big-button" onClick={() => { sfx.uiTap(); playStage(next.stage, next.level) }}>
+              {next.stage.id === result.stageId
+                ? `⏫ レベル${next.level} に ちょうせん`
+                : '⏩ つぎのステージ'}
             </button>
           )}
           <button
-            className={next && nextUnlocked ? 'sub-button' : 'big-button'}
-            onClick={() => { sfx.uiTap(); playStage(stage) }}
+            className={next ? 'sub-button' : 'big-button'}
+            onClick={() => { sfx.uiTap(); playStage(stage, result.difficulty) }}
           >
             🔁 もういっかい
           </button>

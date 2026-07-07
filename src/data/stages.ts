@@ -7,8 +7,8 @@ import type { Hero, Stage } from '../types'
  */
 export const STAGES: Stage[] = [
   {
-    id: 'hiragana-a',
-    title: 'もじシティこうえん「あ」',
+    id: 'hiragana-a', // 内部キーは変更しない（保存済み進捗を壊さないため）
+    title: 'ひらがなこうえん',
     type: 'hiragana',
     mode: 'find',
     renderer: '2.5d',
@@ -40,10 +40,46 @@ export const STAGES: Stage[] = [
     difficulty: 1,
   },
   {
+    id: 'katakana-a',
+    title: 'カタカナこうえん',
+    type: 'katakana',
+    mode: 'find',
+    renderer: '2.5d',
+    // ひらがなこうえんの難易度3をクリアすると解放
+    unlock: { stageId: 'hiragana-a', minLevel: 3 },
+    recommendedAgeMin: 4,
+    recommendedAgeMax: 6,
+    missionText: 'おとを きいて ねらおう！',
+    voicePrompts: [],
+    correctAnswer: 'ア',
+    correctKind: 'katakana',
+    distractors: [
+      { label: 'マ', kind: 'katakana' },
+      { label: 'ヤ', kind: 'katakana' },
+      { label: 'ウ', kind: 'katakana' },
+      { label: 'イ', kind: 'katakana' },
+    ],
+    battle: {
+      enemyCount: 4,
+      purifyStepsPerEnemy: 1,
+      bossPurifySteps: 4,
+      choiceCount: 5,
+      rideDistance: 50,
+      // 紛らわしい定番（シ/ツ・ソ/ン・ク/ワ）は後半に置き、まず読みやすい字から
+      letterPool: ['ア', 'イ', 'ウ', 'オ', 'ン', 'シ', 'ツ', 'ソ', 'ク', 'ワ', 'タ', 'メ'],
+      poolStart: 5,
+    },
+    rounds: 8,
+    targetsPerRound: 5,
+    reward: 1,
+    difficulty: 1,
+  },
+  {
     id: 'word-neko',
     title: '「ねこ」をつくれ！',
     type: 'hiragana',
     mode: 'sequence',
+    unlock: { stageId: 'hiragana-a', minLevel: 1 },
     recommendedAgeMin: 4,
     recommendedAgeMax: 6,
     missionText: '「ね」→「こ」の じゅんばんで ビーム！',
@@ -70,6 +106,7 @@ export const STAGES: Stage[] = [
     title: '「3」をさがせ！',
     type: 'number',
     mode: 'find',
+    unlock: { stageId: 'word-neko', minLevel: 1 },
     recommendedAgeMin: 4,
     recommendedAgeMax: 6,
     missionText: 'すうじの「3」を さがして ビーム！',
@@ -96,6 +133,7 @@ export const STAGES: Stage[] = [
     title: '「2+1」ゲート！',
     type: 'math',
     mode: 'math',
+    unlock: { stageId: 'number-3', minLevel: 1 },
     recommendedAgeMin: 5,
     recommendedAgeMax: 6,
     missionText: 'こたえの ゲートを ビームで えらぼう！',

@@ -101,11 +101,19 @@ export interface MathProblem {
   choices: string[]
 }
 
+/** ステージ内の難易度段階。1→2→3 の順に解放される */
+export type DifficultyLevel = 1 | 2 | 3
+
 export interface Stage {
   id: string
   title: string
   type: StageType
   mode: StageMode
+  /**
+   * 解放条件（省略時は常時解放）。
+   * 「stageId の難易度 minLevel をクリア済み」で解放される。
+   */
+  unlock?: { stageId: string; minLevel: DifficultyLevel }
   /** ゲームシーンの描画方式。'2.5d'=オンレール対峙 / 省略時 '2d'=固定画面（レガシー） */
   renderer?: '2d' | '2.5d'
   /** 2.5d 用: 連戦→ボスのバトル定義（推奨） */
@@ -164,6 +172,8 @@ export interface PlayerProgress {
   mathStats: Record<string, LetterStats>
   /** ステージごとのベスト★（schemaVersion 2 で追加） */
   stageStars: Record<string, number>
+  /** ステージごとのクリア済み最高難易度 0〜3（schemaVersion 3 で追加） */
+  stageLevels: Record<string, number>
   /** 全ステージのベスト★合計 */
   totalStars: number
   playSessions: number
@@ -172,6 +182,8 @@ export interface PlayerProgress {
 /** ステージクリア時に Phaser → React へ渡す結果 */
 export interface StageResult {
   stageId: string
+  /** プレイした難易度（リザルトの「つぎ」判定に使う） */
+  difficulty: DifficultyLevel
   rounds: number
   wrongCount: number
   maxCombo: number

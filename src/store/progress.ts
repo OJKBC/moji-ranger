@@ -1,7 +1,7 @@
-import type { LetterStats, PlayerProgress, TargetKind } from '../types'
+import type { DifficultyLevel, LetterStats, PlayerProgress, Stage, TargetKind } from '../types'
 
 const STORAGE_KEY = 'moji-ranger-progress'
-const SCHEMA_VERSION = 2
+const SCHEMA_VERSION = 3
 
 function defaultStats(): LetterStats {
   return { seen: 0, correct: 0, wrong: 0, avgReactionTime: 0, masteryLevel: 0 }
@@ -18,6 +18,7 @@ function defaultProgress(): PlayerProgress {
     numberStats: {},
     mathStats: {},
     stageStars: {},
+    stageLevels: {},
     totalStars: 0,
     playSessions: 0,
   }
@@ -27,6 +28,8 @@ function defaultProgress(): PlayerProgress {
  * localStorage から読み込む。壊れていたり古いスキーマでも安全に既定値へマージする。
  * スキーマ移行履歴:
  *   v1 → v2: stageStars を追加（v1 の totalStars は再計算されるため引き継がない）
+ *   v2 → v3: stageLevels（ステージ×難易度のクリア状況）を追加。
+ *            旧データで★のあるステージは「難易度1クリア済み」とみなす
  */
 export function loadProgress(): PlayerProgress {
   try {
@@ -38,6 +41,12 @@ export function loadProgress(): PlayerProgress {
     if ((parsed.schemaVersion ?? 1) < 2) {
       merged.stageStars = {}
       merged.totalStars = 0
+    }
+    if ((parsed.schemaVersion ?? 1) < 3) {
+      merged.stageLevels = {}
+      for (const [stageId, stars] of Object.entries(merged.stageStars)) {
+        if (stars > 0) merged.stageLevels[stageId] = 1
+      }
     }
     return merged
   } catch {
@@ -95,16 +104,35 @@ export function recordSeen(label: string, kind: TargetKind | 'math'): void {
 
 /**
  * ステージクリアを記録する。
- * ベスト★を更新し、totalStars はベスト★の合計として再計算。
- * 次ステージがあればアンロックする。
+ * ベスト★とクリア済み最高難易度を更新し、totalStars はベスト★の合計として再計算。
+ * ステージの解放判定は isStageUnlocked が stageLevels から導出する（配列の追記は不要）。
  */
-export function recordStageClear(stageId: string, stars: number, unlockStageId?: string | null): void {
+export function recordStageClear(stageId: string, stars: number, difficulty: DifficultyLevel): void {
   const progress = loadProgress()
   progress.stageStars[stageId] = Math.max(progress.stageStars[stageId] ?? 0, stars)
+  progress.stageLevels[stageId] = Math.max(progress.stageLevels[stageId] ?? 0, difficulty)
   progress.totalStars = Object.values(progress.stageStars).reduce((sum, s) => sum + s, 0)
   progress.playSessions += 1
-  if (unlockStageId && !progress.unlockedStages.includes(unlockStageId)) {
-    progress.unlockedStages.push(unlockStageId)
-  }
   saveProgress(progress)
+}
+
+/** ステージのクリア済み最高難易度（0=未クリア） */
+export function clearedLevelOf(progress: PlayerProgress, stageId: string): number {
+  return progress.stageLevels[stageId] ?? 0
+}
+
+/** そのステージで次に挑戦する難易度（全クリア後は3で遊び続けられる） */
+export function nextLevelOf(progress: PlayerProgress, stageId: string): DifficultyLevel {
+  return Math.min(3, clearedLevelOf(progress, stageId) + 1) as DifficultyLevel
+}
+
+/**
+ * ステージが解放されているか。
+ * データ宣言の unlock 条件（〜の難易度nクリア）から導出する。
+ * 旧セーブの unlockedStages に入っているステージはそのまま解放扱い（ロックアウト防止）。
+ */
+export function isStageUnlocked(stage: Stage, progress: PlayerProgress): boolean {
+  if (progress.unlockedStages.includes(stage.id)) return true
+  if (!stage.unlock) return true
+  return clearedLevelOf(progress, stage.unlock.stageId) >= stage.unlock.minLevel
 }

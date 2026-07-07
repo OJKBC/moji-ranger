@@ -5,9 +5,9 @@ import enemiesUrl from '../assets/enemies.png'
 import { EventBus } from '../EventBus'
 import { sfx } from '../audio/sfx'
 import { voice } from '../audio/voice'
-import { HEROES, nextStageOf } from '../data/stages'
+import { HEROES } from '../data/stages'
 import { loadProgress, recordAnswer, recordSeen, recordStageClear } from '../store/progress'
-import type { MathProblem, Stage, StageResult, TargetKind } from '../types'
+import type { DifficultyLevel, MathProblem, Stage, StageResult, TargetKind } from '../types'
 
 export const GAME_W = 960
 export const GAME_H = 640
@@ -83,9 +83,27 @@ export class GameScene extends Phaser.Scene {
   /** math モード: 現在の問題 */
   private currentProblem: MathProblem | null = null
 
-  constructor(stage: Stage) {
+  /**
+   * 難易度 1〜3（2D 固定画面ステージ用）:
+   *   1: 従来相当 / 2: ターゲット+1・すこし速い / 3: ターゲット+2・さらに速い
+   * つまずいたときの救済（struggledLastRound）は全難易度共通。
+   */
+  private level: DifficultyLevel
+
+  constructor(stage: Stage, difficulty: DifficultyLevel = 1) {
     super('Game')
     this.stageData = stage
+    this.level = difficulty
+  }
+
+  /** 難易度によるターゲット数の加算（画面が破綻しない範囲で） */
+  private targetCount(): number {
+    return Math.min(8, this.stageData.targetsPerRound + (this.level - 1))
+  }
+
+  /** 難易度によるターゲット移動速度の倍率 */
+  private speedFactor(): number {
+    return 1 + (this.level - 1) * 0.12
   }
 
   preload(): void {
@@ -382,7 +400,7 @@ export class GameScene extends Phaser.Scene {
 
   private spawnFindRound(): void {
     const stage = this.stageData
-    const count = this.struggledLastRound ? 3 : stage.targetsPerRound
+    const count = this.struggledLastRound ? 3 : this.targetCount()
     const distractors = Phaser.Utils.Array.Shuffle([...stage.distractors]).slice(0, count - 1)
     const labels = Phaser.Utils.Array.Shuffle([
       { label: stage.correctAnswer!, kind: stage.correctKind },
@@ -396,7 +414,7 @@ export class GameScene extends Phaser.Scene {
   private spawnSequenceRound(): void {
     const stage = this.stageData
     const seq = stage.correctSequence!
-    const count = this.struggledLastRound ? seq.length + 1 : stage.targetsPerRound
+    const count = this.struggledLastRound ? seq.length + 1 : this.targetCount()
     const distractors = Phaser.Utils.Array.Shuffle([...stage.distractors]).slice(0, Math.max(0, count - seq.length))
     const labels = Phaser.Utils.Array.Shuffle([
       ...seq.map(s => ({ label: s, kind: stage.correctKind })),
@@ -430,7 +448,7 @@ export class GameScene extends Phaser.Scene {
     const container = this.add.container(x, y, [bubble, letter]).setDepth(10)
 
     const baseScale = this.struggledLastRound && isExpected ? 0.98 : 0.78
-    const speedScale = this.struggledLastRound ? 0.55 : 1
+    const speedScale = this.struggledLastRound ? 0.55 : this.speedFactor()
     const angle = Phaser.Math.FloatBetween(0, Math.PI * 2)
     const speed = Phaser.Math.FloatBetween(22, 45) * speedScale
 
@@ -885,9 +903,10 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(1800, () => confetti.stop())
 
     const stars: 1 | 2 | 3 = this.wrongTotal <= 1 ? 3 : this.wrongTotal <= 4 ? 2 : 1
-    recordStageClear(this.stageData.id, stars, nextStageOf(this.stageData.id)?.id ?? null)
+    recordStageClear(this.stageData.id, stars, this.level)
     const result: StageResult = {
       stageId: this.stageData.id,
+      difficulty: this.level,
       rounds: this.stageData.rounds,
       wrongCount: this.wrongTotal,
       maxCombo: this.maxCombo,
