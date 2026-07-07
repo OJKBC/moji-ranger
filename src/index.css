@@ -15,8 +15,10 @@ body,
 body {
   font-family: 'Hiragino Maru Gothic ProN', 'BIZ UDPGothic', 'Yu Gothic UI', 'Meiryo', sans-serif;
   background: #1a1040;
-  /* 子どものタッチ操作でスクロール・ズーム・選択が起きないようにする */
-  touch-action: none;
+  /* 子どものタッチ操作でズーム・選択・引っぱり更新が起きないようにする。
+     ※ pan は殺さない（ステージマップのスクロールに必要）。
+       ゲーム画面だけ .game-root 側で touch-action: none にする */
+  touch-action: manipulation;
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
@@ -37,6 +39,8 @@ body {
 .game-root {
   width: 100%;
   height: 100%;
+  /* ゲーム中の誤スクロール防止はここに閉じ込める */
+  touch-action: none;
 }
 
 .game-root canvas {
@@ -143,6 +147,8 @@ body {
 
 .map-screen {
   width: min(94vw, 860px);
+  /* safe area を避けつつ画面内に収め、あふれた分はグリッド側をスクロールさせる */
+  max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 16px);
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -189,6 +195,14 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 14px;
+  /* ステージが増えてもスクロールで最後まで届く（モバイルはタッチで滑らかに）。
+     あふれるときは次のカードが途中まで見える＝スクロールできると子どもにも分かる */
+  overflow-y: auto;
+  min-height: 0;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding-bottom: 6px;
 }
 
 .stage-card {

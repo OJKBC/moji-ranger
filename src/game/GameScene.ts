@@ -930,6 +930,7 @@ export class GameScene extends Phaser.Scene {
   private loseLife(): void {
     if (this.failed) return
     this.lives--
+    sfx.lifeLose()
     const heart = this.heartIcons[this.lives]
     if (heart) {
       heart.setText('🌫️').setAlpha(0.9)

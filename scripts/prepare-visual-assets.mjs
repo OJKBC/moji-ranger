@@ -127,6 +127,23 @@ console.log('background1.jpg done')
 await processImage(findSrc('lefthand.png', 'left hand.png'), 'lefthand.png', 620, keyMagenta, { trim: true })
 // 右手は指先座標をコード側で比率指定するため trim しない（座標がずれる）
 await processImage(findSrc('righthand.png', 'right hand.png'), 'righthand.png', 560, keyMagenta)
-await processImage(findSrc('monster1.png'), 'monster1.png', 640, (d, w, h) => floodKey(d, w, h, 42))
+await processImage(findSrc('monster1.png', path.join('モンスター', 'よわい', 'monster1.png')), 'monster1.png', 640, (d, w, h) => floodKey(d, w, h, 42))
 await processImage(findSrc('bubble.png'), 'bubble.png', 300, keyGreen, { trim: true })
+
+// hands.png（1枚に左右両腕・マゼンタ背景）→ 中央で左右に分割して個別スプライトに。
+// 分割する理由: 左右で別々の揺れ/押し出しアニメを付ける・画面隅への配置自由度のため。
+// 指先座標はコード側で比率指定するため trim しない。
+{
+  const src = findSrc('hands.png')
+  const meta = await sharp(src).metadata()
+  const half = Math.floor(meta.width / 2)
+  const tmpL = path.join(DST, '_hands-l.png')
+  const tmpR = path.join(DST, '_hands-r.png')
+  await sharp(src).extract({ left: 0, top: 0, width: half, height: meta.height }).toFile(tmpL)
+  await sharp(src).extract({ left: half, top: 0, width: meta.width - half, height: meta.height }).toFile(tmpR)
+  await processImage(tmpL, 'hand-left.png', 620, keyMagenta)
+  await processImage(tmpR, 'hand-right.png', 620, keyMagenta)
+  fs.rmSync(tmpL)
+  fs.rmSync(tmpR)
+}
 console.log('done')

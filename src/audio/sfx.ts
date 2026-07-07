@@ -10,7 +10,17 @@ class SfxPlayer {
   private ctx: AudioContext | null = null
   private master: GainNode | null = null
   private noiseBuffer: AudioBuffer | null = null
+  /** 同種音の直近再生時刻（連打でうるさくならないよう間引く） */
+  private lastPlayAt: Record<string, number> = {}
   enabled = true
+
+  /** 同じ種類の音が minGapMs 以内に鳴っていたら true（=スキップする） */
+  private throttled(key: string, minGapMs: number): boolean {
+    const now = performance.now()
+    if (now - (this.lastPlayAt[key] ?? -Infinity) < minGapMs) return true
+    this.lastPlayAt[key] = now
+    return false
+  }
 
   /** 初回ユーザー操作の中で呼ぶ */
   unlock(): void {
@@ -70,16 +80,21 @@ class SfxPlayer {
     src.stop(t0 + duration)
   }
 
-  /** ビーム発射（押した瞬間） */
+  /** ビーム発射（シュッと気持ちいい・連射しても耳障りにならない短さ） */
   shoot(): void {
-    this.tone('square', 750, 190, 0.09, 0.12)
+    if (this.throttled('shoot', 70)) return
+    this.noise(0.07, 0.22, 2600) // 空気を切る「シュッ」
+    this.tone('square', 880, 240, 0.08, 0.1)
+    this.tone('sine', 1400, 2100, 0.05, 0.08)
   }
 
-  /** 着弾・シャボン玉が弾ける（正解ヒットの主役音） */
+  /** 着弾・シャボン玉が弾ける（正解ヒットの主役音。着弾の瞬間に鳴らす） */
   pop(): void {
+    if (this.throttled('pop', 60)) return
     this.noise(0.09, 0.5, 1800)
     this.tone('triangle', 520, 90, 0.13, 0.4)
     this.tone('sine', 1300, 1900, 0.07, 0.18, 0.01)
+    this.tone('sine', 2200, 3000, 0.06, 0.1, 0.02) // キラッ
   }
 
   /** キラキラ（正解の大文字表示に合わせて） */
@@ -97,7 +112,15 @@ class SfxPlayer {
 
   /** 誤答（責めない、ごく柔らかい音） */
   wrong(): void {
+    if (this.throttled('wrong', 150)) return
     this.tone('sine', 330, 262, 0.22, 0.1)
+  }
+
+  /** ライフ減少（やさしいポン音。ショックを与えない） */
+  lifeLose(): void {
+    if (this.throttled('lifeLose', 150)) return
+    this.tone('sine', 420, 300, 0.16, 0.12)
+    this.noise(0.05, 0.12, 900, 0.02)
   }
 
   /** 空撃ち（かすかなキラ） */
@@ -105,10 +128,12 @@ class SfxPlayer {
     this.tone('sine', 1100, 1500, 0.06, 0.05)
   }
 
-  /** モンスター浄化（ふわっと上がる） */
+  /** モンスター浄化（明るいキラキラ＋ポップな解放音） */
   purify(): void {
     const notes = [523, 659, 784, 1046]
     notes.forEach((f, i) => this.tone('triangle', f, f, 0.18, 0.1, i * 0.07))
+    this.noise(0.12, 0.18, 3200, 0.05) // シャラッと晴れる
+    this.tone('sine', 1568, 2093, 0.22, 0.1, 0.28) // 最後のキラッ
   }
 
   /** ステージクリアのファンファーレ */
@@ -118,15 +143,18 @@ class SfxPlayer {
     this.tone('triangle', 1318, 1318, 0.5, 0.14, 0.55)
   }
 
-  /** UI ボタン */
+  /** UI ボタン（軽いポップ音） */
   uiTap(): void {
+    if (this.throttled('uiTap', 80)) return
     this.tone('sine', 700, 900, 0.07, 0.1)
   }
 
-  /** ボス出現の予兆（低くやわらかい気配。怖がらせない） */
+  /** ボス出現の予兆（ワクワクする高揚感。怖い低音・不協和音にしない） */
   omen(): void {
-    this.tone('triangle', 130, 95, 0.5, 0.12)
-    this.tone('triangle', 110, 85, 0.6, 0.1, 0.45)
+    const notes = [262, 330, 392, 523] // ドミソド（明るい上昇）
+    notes.forEach((f, i) => this.tone('triangle', f, f, 0.22, 0.11, i * 0.13))
+    this.noise(0.3, 0.08, 2400, 0.4) // シャラーッという期待感
+    this.tone('sine', 784, 1046, 0.25, 0.09, 0.55)
   }
 }
 

@@ -3,7 +3,7 @@ import { EventBus } from './EventBus'
 import { PhaserGame } from './game/PhaserGame'
 import { STAGES } from './data/stages'
 import { StageMap } from './StageMap'
-import { isStageUnlocked, loadProgress, nextLevelOf } from './store/progress'
+import { isStageUnlocked, loadProgress } from './store/progress'
 import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
 import type { DifficultyLevel, Stage, StageResult } from './types'
@@ -33,7 +33,8 @@ function nextChallengeOf(result: StageResult): { stage: Stage; level: Difficulty
   const index = STAGES.findIndex(s => s.id === result.stageId)
   for (let i = index + 1; i < STAGES.length; i++) {
     if (!STAGES[i].hidden && isStageUnlocked(STAGES[i], progress)) {
-      return { stage: STAGES[i], level: nextLevelOf(progress, STAGES[i].id) }
+      // 新しいステージへの挑戦は必ず難易度1から
+      return { stage: STAGES[i], level: 1 }
     }
   }
   return null

@@ -1,5 +1,5 @@
 import { STAGES } from './data/stages'
-import { clearedLevelOf, isStageUnlocked, loadProgress, nextLevelOf } from './store/progress'
+import { clearedLevelOf, isStageUnlocked, loadProgress } from './store/progress'
 import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
 import type { DifficultyLevel, Stage } from './types'
@@ -34,7 +34,9 @@ export function StageMap({ onSelect, onBack }: Props) {
       return
     }
     sfx.uiTap()
-    onSelect(stage, nextLevelOf(progress, stage.id))
+    // どのステージも必ず難易度1から始める（クリアでレベル2→3へ進行）。
+    // バッジは最高到達度の表示として維持し、クリア済みでも何度でも遊び直せる
+    onSelect(stage, 1)
   }
 
   return (

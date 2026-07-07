@@ -79,6 +79,7 @@ export const STAGES: Stage[] = [
     title: 'もじもじアトラクション',
     type: 'hiragana',
     mode: 'sequence',
+    renderer: '2.5d', // 画面仕様はひらがなこうえんと共通（差分は出題内容だけ）
     unlock: { stageId: 'hiragana-a', minLevel: 1 },
     recommendedAgeMin: 4,
     recommendedAgeMax: 6,
@@ -95,6 +96,15 @@ export const STAGES: Stage[] = [
       { label: 'わ', kind: 'hiragana' },
       { label: 'に', kind: 'hiragana' },
     ],
+    battle: {
+      enemyCount: 3, // 敵1体＝単語1つ（ボスも単語1つ。浄化ステップ＝文字数）
+      purifyStepsPerEnemy: 1, // sequence では未使用（単語の文字数が優先）
+      bossPurifySteps: 1, // 同上
+      choiceCount: 5,
+      rideDistance: 50,
+      letterPool: [], // sequence では未使用（words.ts のプールを使う）
+      poolStart: 0,
+    },
     rounds: 5,
     targetsPerRound: 5,
     reward: 1,
@@ -133,11 +143,21 @@ export const STAGES: Stage[] = [
     title: 'さんすうバトル',
     type: 'math',
     mode: 'math',
+    renderer: '2.5d', // 画面仕様はひらがなこうえんと共通（差分は出題内容だけ）
     unlock: { stageId: 'word-neko', minLevel: 1 }, // number-3 非表示のため付け替え
     recommendedAgeMin: 5,
     recommendedAgeMax: 6,
     missionText: 'こたえの ゲートを ビームで えらぼう！',
     voicePrompts: [],
+    battle: {
+      enemyCount: 3,
+      purifyStepsPerEnemy: 1, // 実際の回数は data/monsters.ts の purifySteps テーブルで決まる
+      bossPurifySteps: 3,
+      choiceCount: 3, // math の選択肢は問題の choices（3つ）
+      rideDistance: 50,
+      letterPool: [], // math では未使用（mathLevels から生成）
+      poolStart: 0,
+    },
     // 難易度別のランダム出題パラメータ（problems より優先。生成は GameScene）
     mathLevels: {
       1: { ops: ['+'], maxAnswer: 5 },

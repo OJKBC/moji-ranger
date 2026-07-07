@@ -1,11 +1,9 @@
+import { LEARNING } from '../data/learningConfig'
 import { loadProgress } from '../store/progress'
 import type { TargetKind } from '../types'
 
 /**
- * 次に狙う文字を選ぶ簡易・間隔反復ピッカー。
- * 統計（letterStats / numberStats）を出題に還元する入口で、
- * 対峙エンカウントは正解のたびにここへ「次は何を出す？」と聞きにくる。
- *
+ * 次に狙う文字を選ぶ簡易・間隔反復ピッカー（ボスの復習出題用）。
  * 優先度: 誤答が多い文字 > 未出題の文字 > 熟達度が低い文字。
  * わずかな乱数で同点をばらし、同じ文字ばかりの連続を避ける。
  */
@@ -31,16 +29,49 @@ export function pickNextLetter(pool: string[], kind: TargetKind): string {
 
 /**
  * 習得に応じて徐々に広がるプールから、次のターゲットを選ぶ。
- * - プール（習わせたい順）の先頭 poolStart 文字から始める
- * - correct が2回以上になった文字が増えるたびに、次の文字が1つ開放される
- * - exclude（直前のターゲット）は候補が2つ以上あれば避け、同じ文字の連続を防ぐ
+ *
+ * 出題バランス（数値は data/learningConfig.ts で調整）:
+ * - 復習（苦手優先）は maxReviewRatio までに抑え、残りはプール全体からまんべんなく選ぶ
+ *   （完全ランダムにはしない＝間隔反復は生かしつつ、同じ文字への張り付きを防ぐ）
+ * - 直前の文字は出さない（2連続禁止）。直近 recentWindow 問に出た文字も選ばれにくくする
+ * - 未出題の文字を優先的に露出させ、出題回数が少ない文字ほど選ばれやすくする
  */
-export function pickTargetLetter(pool: string[], poolStart: number, kind: TargetKind, exclude?: string): string {
+export function pickTargetLetter(pool: string[], poolStart: number, kind: TargetKind, recent: string[] = []): string {
   const progress = loadProgress()
   const map = kind === 'number' ? progress.numberStats : progress.letterStats
   const learned = pool.filter(l => (map[l]?.correct ?? 0) >= 2).length
   const unlockedCount = Math.min(pool.length, poolStart + learned)
   let unlocked = pool.slice(0, unlockedCount)
-  if (exclude && unlocked.length > 1) unlocked = unlocked.filter(l => l !== exclude)
-  return pickNextLetter(unlocked, kind)
+  // 同じ文字を2回連続で出題しない
+  const last = recent[recent.length - 1]
+  if (last && unlocked.length > 1) unlocked = unlocked.filter(l => l !== last)
+
+  // この1問を「復習の回」にするかどうか（比率の上限を守る）
+  const isReviewTurn = Math.random() < LEARNING.maxReviewRatio
+  const recentSet = new Set(recent.slice(-LEARNING.recentWindow))
+  // 出題回数はプール内の最小値との「差」で評価する（昔たくさん出た文字が
+  // 永久に選ばれなくなるのを防ぎつつ、露出の少ない文字を優先する）
+  const minSeen = Math.min(...unlocked.map(l => map[l]?.seen ?? 0))
+
+  let best = unlocked[0]
+  let bestScore = -Infinity
+  for (const label of unlocked) {
+    const s = map[label]
+    const seen = s?.seen ?? 0
+    let score = Math.random() * 2
+    // まんべんなく露出させる（未出題は必ず優先・出題回数が相対的に多いほど後回し）
+    if (seen === 0) score += LEARNING.unseenBoost
+    score -= Math.min(seen - minSeen, 15) * LEARNING.seenPenaltyPerCount
+    // 直近に出た文字は避ける
+    if (recentSet.has(label)) score -= LEARNING.recentPenalty
+    // 復習の回だけ、苦手（誤答・低熟達）を優先する
+    if (isReviewTurn) {
+      score += (s?.wrong ?? 0) * 2 + (5 - (s?.masteryLevel ?? 0)) * 0.5
+    }
+    if (score > bestScore) {
+      bestScore = score
+      best = label
+    }
+  }
+  return best
 }

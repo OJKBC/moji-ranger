@@ -24,11 +24,11 @@ await page.evaluate(() => document.querySelector('button.big-button')?.click())
 await sleep(700)
 await page.screenshot({ path: `${OUT}/p2-map-before.png` })
 
-async function playStage(cardIndex, name) {
-  await page.evaluate(i => document.querySelectorAll('.stage-card')[i]?.click(), cardIndex)
+/** いま始まっているステージをクリアまでプレイする（正解を自動で撃つ） */
+async function playLoop(name) {
   await sleep(2200)
   let shots = 0
-  for (let step = 0; step < 40; step++) {
+  for (let step = 0; step < 60; step++) {
     const done = await page.$('.result-heading')
     if (done) break
     const target = await page.evaluate(() => {
@@ -40,60 +40,48 @@ async function playStage(cardIndex, name) {
       const box = await canvas.boundingBox()
       await page.mouse.click(box.x + (target.x * box.width) / 960, box.y + (target.y * box.height) / 640)
       shots++
-      if (name === 'stage2' && shots === 2) {
-        await sleep(500)
-        await page.screenshot({ path: `${OUT}/p2-${name}-word.png` })
-      }
-      if (name === 'stage4' && shots === 1) {
-        await sleep(400)
-        await page.screenshot({ path: `${OUT}/p2-${name}-answer.png` })
-      }
     }
     await sleep(1150)
   }
   await sleep(2600)
   await page.screenshot({ path: `${OUT}/p2-${name}-result.png` })
   console.log(`${name}: cleared with ${shots} correct shots`)
-  // マップへ戻る
-  await page.evaluate(() => {
+}
+
+/** リザルト画面のボタンを文言で押す */
+async function clickResult(text) {
+  await page.evaluate(t => {
     const btns = [...document.querySelectorAll('button')]
-    btns.find(b => b.textContent.includes('ステージマップ'))?.click()
-  })
-  await sleep(700)
+    btns.find(b => b.textContent.includes(t))?.click()
+  }, text)
+  await sleep(800)
 }
 
 // カード並び: [0]ひらがな [1]カタカナ(ひらがなLv3で解放) [2]もじもじ [3]さんすう（すうじは非表示）
-// ひらがなをLv1→2→3とクリアしてカタカナを解放し、全ステージを1回ずつ遊ぶ
-await playStage(0, 'stage1-lv1')
+// マップタップは常にLv1開始。Lv2/3へはリザルトの「⏫レベルn」ボタンで進む
+await page.evaluate(() => document.querySelectorAll('.stage-card')[0]?.click())
+await playLoop('stage1-lv1')
+await clickResult('レベル2')
+await playLoop('stage1-lv2')
+await clickResult('レベル3')
+await playLoop('stage1-lv3')
+await clickResult('ステージマップ')
 await page.screenshot({ path: `${OUT}/p2-map-mid.png` })
-await playStage(0, 'stage1-lv2')
-await playStage(0, 'stage1-lv3')
-await playStage(1, 'katakana-lv1')
-await playStage(2, 'stage2')
+
+await page.evaluate(() => document.querySelectorAll('.stage-card')[1]?.click())
+await playLoop('katakana-lv1')
+await clickResult('ステージマップ')
+
+await page.evaluate(() => document.querySelectorAll('.stage-card')[2]?.click())
+await playLoop('stage2-words')
+await clickResult('ステージマップ')
 
 // さんすうバトルはゲーム画面キャプチャを1枚撮ってからそのまま最後までプレイ
 await page.evaluate(i => document.querySelectorAll('.stage-card')[i]?.click(), 3)
-await sleep(2200)
-await page.screenshot({ path: `${OUT}/p2-stage4-game.png` })
-// ステージ4はそのまま最後までプレイ
-for (let step = 0; step < 40; step++) {
-  const done = await page.$('.result-heading')
-  if (done) break
-  const target = await page.evaluate(() => (window.__debugTargets ?? []).find(t => t.correct) ?? null)
-  if (target) {
-    const canvas = await page.$('canvas')
-    const box = await canvas.boundingBox()
-    await page.mouse.click(box.x + (target.x * box.width) / 960, box.y + (target.y * box.height) / 640)
-  }
-  await sleep(1150)
-}
 await sleep(2600)
-await page.screenshot({ path: `${OUT}/p2-stage4-result.png` })
-await page.evaluate(() => {
-  const btns = [...document.querySelectorAll('button')]
-  btns.find(b => b.textContent.includes('ステージマップ'))?.click()
-})
-await sleep(700)
+await page.screenshot({ path: `${OUT}/p2-stage4-game.png` })
+await playLoop('stage4-math')
+await clickResult('ステージマップ')
 await page.screenshot({ path: `${OUT}/p2-map-after.png` })
 
 // リロードして進捗が復元されるか（DoD）

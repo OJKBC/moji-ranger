@@ -9,13 +9,13 @@ export const ASSET_FILES = {
   background: 'background1.jpg',
   /** 選択肢の空のオーブ（文字はコードで上に描く） */
   bubble: 'bubble.png',
-  /** 一人称の左手（待機・ひらいた手） */
-  leftHand: 'lefthand.png',
-  /** 一人称の右手（発射ポーズ・ブレスレット付き） */
-  rightHand: 'righthand.png',
-  /** 敵モンスター */
+  /** 一人称の左手（hands.png の左半分・ひらいた手） */
+  leftHand: 'hand-left.png',
+  /** 一人称の右手（hands.png の右半分・ひらいた手） */
+  rightHand: 'hand-right.png',
+  /** 敵モンスターのフォールバック（通常は monsterManifest のグループから選ぶ） */
   monster: 'monster1.png',
-  /** ボス（専用画像ができたらここを差し替える。今はザコと共通） */
+  /** ボスのフォールバック（monsterManifest.boss → strong → これ、の順） */
   boss: 'monster1.png',
 } as const
 

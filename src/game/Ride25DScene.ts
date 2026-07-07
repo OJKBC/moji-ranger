@@ -3,16 +3,25 @@ import { EventBus } from '../EventBus'
 import { sfx } from '../audio/sfx'
 import { voice } from '../audio/voice'
 import { assetUrl } from './assetManifest'
+import { MONSTER_FILES } from './monsterManifest'
+import { MONSTER_TABLE } from '../data/monsters'
+import { wordsForLevel } from '../data/words'
+import type { WordSpec } from '../data/words'
 import { pickDistractors } from '../learning/distractors'
 import { pickNextLetter, pickTargetLetter } from '../learning/picker'
 import { recordAnswer, recordSeen, recordStageClear } from '../store/progress'
-import type { DifficultyLevel, Stage, StageBattle, StageResult, TargetKind } from '../types'
+import type { DifficultyLevel, MathLevelSpec, MathProblem, Stage, StageBattle, StageResult, TargetKind } from '../types'
 
 export const GAME_W = 960
 export const GAME_H = 640
 
 const FONT = '"Hiragino Maru Gothic ProN", "BIZ UDPGothic", "Yu Gothic UI", "Meiryo", sans-serif'
 const BUBBLE_COLORS = [0xffc2d4, 0xaddcff, 0xfff2ad, 0xc9f2b8, 0xe3ccff]
+/** 数字の読み（さんすうバトルの読み上げ用） */
+const DIGIT_READING: Record<string, string> = {
+  '1': 'いち', '2': 'に', '3': 'さん', '4': 'よん', '5': 'ご',
+  '6': 'ろく', '7': 'なな', '8': 'はち', '9': 'きゅう', '10': 'じゅう',
+}
 const SHOT_COOLDOWN_MS = 110
 /** 強めのオートエイム（4〜6歳: 学習タスクは「正しい文字を選ぶ」こと） */
 const AIM_ASSIST_RADIUS = 90
@@ -97,10 +106,11 @@ export class Ride25DScene extends Phaser.Scene {
   private groundG!: Phaser.GameObjects.Graphics
   private approach: ApproachingEnemy | null = null
 
-  // 一人称の手・照準
+  // 一人称の両手・照準（ビームは左右の指先から1点に収束する）
   private handR!: Phaser.GameObjects.Container
-  private fingertip = { x: 0, y: 0 }
-  private bracelet = { x: 0, y: 0 } // ブレスレットの光（発射時に光らせる）
+  private handL!: Phaser.GameObjects.Container
+  private fingertipR = { x: 0, y: 0 }
+  private fingertipL = { x: 0, y: 0 }
   private reticle!: Phaser.GameObjects.Container
   private aim = { x: GAME_W / 2, y: 330 }
 
@@ -115,8 +125,23 @@ export class Ride25DScene extends Phaser.Scene {
   private purifyStep = 0
   private purifyStepsNeeded = 1
   private currentTarget = ''
-  private lastTarget = ''
+  /** 直近の出題（同じ文字の張り付き防止。learningConfig.recentWindow 分使う） */
+  private recentTargets: string[] = []
   private currentKind: TargetKind = 'hiragana'
+
+  // モード別の出題状態（⑭ 共通エンジン化: 差分は「出題内容」だけ）
+  /** sequence: 今の単語（words.ts のプールから敵ごとに選ぶ） */
+  private currentSeq: string[] = []
+  private currentWord = ''
+  private currentCelebration = '⭐'
+  private wordQueue: WordSpec[] = []
+  /** math: 現在の問題（mathLevels からランダム生成） */
+  private currentProblem: MathProblem | null = null
+
+  // モンスターの抽選（グループ・浄化回数は data/monsters.ts のテーブルで決まる）
+  private monsterKeys: { weak: string[]; strong: string[]; boss: string[] } = { weak: [], strong: [], boss: [] }
+  private lastMonsterKey = ''
+  private approachGroup: 'weak' | 'strong' = 'weak'
   private bubbles: ChoiceBubble[] = []
   private monster: Phaser.GameObjects.Image | null = null
   private mistPuffs: Phaser.GameObjects.Image[] = []
@@ -160,8 +185,47 @@ export class Ride25DScene extends Phaser.Scene {
     this.load.image('img-bubble', assetUrl('bubble'))
     this.load.image('img-hand-l', assetUrl('leftHand'))
     this.load.image('img-hand-r', assetUrl('rightHand'))
-    this.load.image('img-monster', assetUrl('monster'))
-    this.load.image('img-boss', assetUrl('boss'))
+    this.load.image('img-monster', assetUrl('monster')) // マニフェストが空のときのフォールバック
+
+    // モンスターはグループごとに毎プレイ数枚だけ抽選して読み込む
+    // （全画像を読むと重い。プレイのたびに顔ぶれが変わる）
+    const sample = (files: string[], n: number) =>
+      Phaser.Utils.Array.Shuffle([...files]).slice(0, Math.max(0, n))
+    const load = (files: string[]) => files.map(f => {
+      const key = `mon-${f.replace(/\.[a-z]+$/i, '')}`
+      this.load.image(key, `${import.meta.env.BASE_URL}assets/monsters/${f}`)
+      return key
+    })
+    this.monsterKeys.weak = load(sample(MONSTER_FILES.weak, MONSTER_TABLE.sampleSize.weak))
+    this.monsterKeys.strong = load(sample(MONSTER_FILES.strong, MONSTER_TABLE.sampleSize.strong))
+    this.monsterKeys.boss = load(sample(MONSTER_FILES.boss, 1))
+  }
+
+  /** 出現テーブル（data/monsters.ts）に従ってモンスターを1体選ぶ */
+  private pickMonster(isBoss: boolean): { key: string; group: 'weak' | 'strong' } {
+    let group: 'weak' | 'strong'
+    let pool: string[]
+    if (isBoss) {
+      // ボスはつよいグループから（専用画像があればそちらを優先）
+      group = 'strong'
+      pool = this.monsterKeys.boss.length ? this.monsterKeys.boss
+        : this.monsterKeys.strong.length ? this.monsterKeys.strong : this.monsterKeys.weak
+    } else {
+      const w = MONSTER_TABLE.weights[this.level]
+      const total = w.weak + w.strong
+      group = total > 0 && Math.random() < w.strong / total ? 'strong' : 'weak'
+      pool = this.monsterKeys[group]
+      if (pool.length === 0) {
+        group = group === 'strong' ? 'weak' : 'strong'
+        pool = this.monsterKeys[group]
+      }
+    }
+    if (pool.length === 0) return { key: 'img-monster', group: 'weak' }
+    // 同じ敵ばかりにならないよう、直前と同じ画像は避ける
+    const candidates = pool.length > 1 ? pool.filter(k => k !== this.lastMonsterKey) : pool
+    const key = candidates[Phaser.Math.Between(0, candidates.length - 1)]
+    this.lastMonsterKey = key
+    return { key, group }
   }
 
   create(): void {
@@ -381,18 +445,20 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   /** モンスター画像の対峙時スケール（画像サイズに依存しないよう表示高さから逆算） */
-  private monsterScale(isBoss: boolean): number {
-    const tex = this.textures.get(isBoss ? 'img-boss' : 'img-monster').getSourceImage()
+  private monsterScaleFor(key: string, isBoss: boolean): number {
+    const tex = this.textures.get(key).getSourceImage()
     return (isBoss ? 430 : 305) / tex.height
   }
 
   /** 次の敵を前方に出す（近づいてくるのが見える） */
   private spawnApproaching(isBoss: boolean): void {
+    const { key, group } = this.pickMonster(isBoss)
+    this.approachGroup = group
     // もやに取り憑かれている間はくすんだ色（浄化で本来の色に戻る）
-    const sprite = this.add.image(0, 0, isBoss ? 'img-boss' : 'img-monster')
+    const sprite = this.add.image(0, 0, key)
       .setOrigin(0.5, 0.5).setDepth(3500).setVisible(false).setTint(0xb8b8cc)
     // 対峙位置（z≈90）でちょうど対峙サイズになる逆算スケール
-    const meetScale = this.monsterScale(isBoss)
+    const meetScale = this.monsterScaleFor(key, isBoss)
     const sAtMeet = FOCAL / (FOCAL + 90)
     this.approach = {
       sprite,
@@ -438,10 +504,8 @@ export class Ride25DScene extends Phaser.Scene {
     this.phase = 'encounter'
     this.bossActive = isBoss
     this.purifyStep = 0
-    this.purifyStepsNeeded = isBoss ? this.battle.bossPurifySteps : this.battle.purifyStepsPerEnemy
 
     // 近づいてきたビルボードを対峙位置へなめらかに引き継ぐ（参考画像に合わせて大きめ）
-    const targetScale = this.monsterScale(isBoss)
     const targetY = isBoss ? 218 : 235
     let m: Phaser.GameObjects.Image
     if (this.approach) {
@@ -449,8 +513,23 @@ export class Ride25DScene extends Phaser.Scene {
       this.approach = null
       m.setDepth(4000)
     } else {
-      m = this.add.image(GAME_W / 2, 330, isBoss ? 'img-boss' : 'img-monster')
+      const { key, group } = this.pickMonster(isBoss)
+      this.approachGroup = group
+      m = this.add.image(GAME_W / 2, 330, key)
         .setDepth(4000).setScale(0.1).setTint(0xb8b8cc)
+    }
+    const targetScale = this.monsterScaleFor(m.texture.key, isBoss)
+
+    // 浄化に必要な正解数（モード別。数値は data/monsters.ts・words.ts のデータで決まる）
+    if (this.stageData.mode === 'sequence') {
+      // 単語モード: 敵1体＝単語1つ。文字数がそのままステップ数（メーターのマス＝文字）
+      this.setupNextWord()
+      this.purifyStepsNeeded = this.currentSeq.length
+    } else if (isBoss) {
+      this.purifyStepsNeeded = this.battle.bossPurifySteps
+    } else {
+      const [min, max] = MONSTER_TABLE.purifySteps[this.approachGroup]
+      this.purifyStepsNeeded = Phaser.Math.Between(min, max)
     }
     this.monster = m
     this.tweens.add({
@@ -510,25 +589,61 @@ export class Ride25DScene extends Phaser.Scene {
     this.tweens.add({ targets: this.meterBox, scale: 1, duration: 320, delay: 400, ease: 'Back.easeOut' })
   }
 
-  /** 1問分の出題。狙う文字は学習システムが選び、毎回明確に伝える */
+  /** 単語モード: 次の単語をプールから選ぶ（難易度=文字数。words.ts のデータで決まる） */
+  private setupNextWord(): void {
+    if (this.wordQueue.length === 0) {
+      const pool = wordsForLevel(this.level)
+      this.wordQueue = Phaser.Utils.Array.Shuffle(
+        pool.length > 0
+          ? [...pool]
+          : [{ word: this.stageData.word ?? 'ねこ', celebration: this.stageData.celebration ?? '⭐' }],
+      )
+    }
+    const spec = this.wordQueue.shift()!
+    this.currentWord = spec.word
+    this.currentSeq = [...spec.word]
+    this.currentCelebration = spec.celebration
+  }
+
+  /** 1問分の出題。差分は「出題内容」だけで、画面・進行は全モード共通 */
   private startPurifyStep(): void {
     this.stepActive = false
     this.wrongThisStep = 0
     this.hintReplayDone = false
     this.hintGlowDone = false
-
-    // 出題文字: ボスは直近で練習した文字、ザコは開放済みプールから間隔反復で
     this.currentKind = this.stageData.correctKind
+
+    if (this.stageData.mode === 'sequence') {
+      this.startSequenceStep()
+      return
+    }
+    if (this.stageData.mode === 'math') {
+      this.startMathStep()
+      return
+    }
+    this.startFindStep()
+  }
+
+  /** find モード: 音声のみで狙う文字を伝える（従来のひらがな/カタカナこうえん） */
+  private startFindStep(): void {
+    // 出題文字: ボスは直近で練習した文字、ザコは開放済みプールから
+    // （復習比率・直近回避・まんべんなく露出は learningConfig で調整）
     if (this.bossActive && this.practiced.length > 0) {
       const pool = [...new Set(this.practiced)]
-      const candidates = pool.length > 1 ? pool.filter(l => l !== this.lastTarget) : pool
+      // ボスの復習も直近に出した文字は避け、同じ文字への張り付きを防ぐ
+      const recentSet = new Set(this.recentTargets.slice(-3))
+      let candidates = pool.filter(l => !recentSet.has(l))
+      if (candidates.length === 0) {
+        const last = this.recentTargets[this.recentTargets.length - 1]
+        candidates = pool.length > 1 ? pool.filter(l => l !== last) : pool
+      }
       this.currentTarget = pickNextLetter(candidates, this.currentKind)
     } else {
       this.currentTarget = pickTargetLetter(
-        this.battle.letterPool, this.battle.poolStart, this.currentKind, this.lastTarget,
+        this.battle.letterPool, this.battle.poolStart, this.currentKind, this.recentTargets,
       )
     }
-    this.lastTarget = this.currentTarget
+    this.recentTargets.push(this.currentTarget)
 
     // 難易度調整: 正答率70〜85%帯を狙う（全難易度共通のセーフティ）
     const attempts = this.sessionCorrect + this.wrongTotal
@@ -547,7 +662,93 @@ export class Ride25DScene extends Phaser.Scene {
       preferWeakPairs: this.level >= 2, // 苦手なペアを優先（固定羅列にしない）
     })
     const labels = Phaser.Utils.Array.Shuffle([this.currentTarget, ...distractors])
-    // 敵を囲むアーチ配置（選択肢数に応じて等間隔に生成。5個なら従来とほぼ同じ）
+    this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
+      this.spawnBubbleArc(labels)
+      recordSeen(this.currentTarget, this.currentKind)
+      this.beginStepInput()
+    })
+  }
+
+  /**
+   * sequence モード（もじもじアトラクション）: 単語の文字を順番どおりに撃つ。
+   * バブルは単語の開始時に一度だけ出し、正解した文字から消えていく。
+   */
+  private startSequenceStep(): void {
+    const seq = this.currentSeq
+    this.currentTarget = seq[this.purifyStep]
+    if (this.purifyStep === 0) {
+      // 単語の開始: 全文字＋まぎらわしい文字を一度に出す
+      const choiceCount = Math.max(seq.length + 1, this.battle.choiceCount)
+      const distractors = pickDistractors(seq[0], choiceCount - seq.length, {
+        kind: this.currentKind,
+        useConfusables: this.level >= 2,
+        preferWeakPairs: this.level >= 2,
+        exclude: seq,
+      })
+      const labels = Phaser.Utils.Array.Shuffle([...seq, ...distractors])
+      voice.speak(`${seq.join('、')}、の じゅんばんで うとう！ まずは、${seq[0]}！`)
+      this.setMissionText(`まずは「${seq[0]}」！`)
+      this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
+        this.spawnBubbleArc(labels)
+        for (const s of seq) recordSeen(s, this.currentKind)
+        this.beginStepInput()
+      })
+    } else {
+      // 2文字目以降: バブルはそのまま、狙いだけ進める
+      this.setMissionText(`つぎは「${this.currentTarget}」！`)
+      this.beginStepInput()
+    }
+  }
+
+  /** math モード（さんすうバトル）: 問題を表示・読み上げ、答えの候補数字を撃つ */
+  private startMathStep(): void {
+    const spec = this.stageData.mathLevels?.[this.level]
+    this.currentProblem = spec
+      ? this.makeMathProblem(spec)
+      : this.stageData.problems![Phaser.Math.Between(0, this.stageData.problems!.length - 1)]
+    this.currentTarget = this.currentProblem.answer
+    this.setMissionText(`「${this.currentProblem.question}」は どれ？`)
+    voice.speak(this.currentProblem.voicePrompt)
+    const labels = Phaser.Utils.Array.Shuffle([...this.currentProblem.choices])
+    this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
+      this.spawnBubbleArc(labels)
+      recordSeen(this.currentProblem!.question, 'math')
+      this.beginStepInput()
+    })
+  }
+
+  /**
+   * 難易度パラメータ（演算種別・答えの最大値）から1問をランダム生成する。
+   * 引き算は答えが必ず1以上（0以下になる問題は作らない）。
+   */
+  private makeMathProblem(spec: MathLevelSpec): MathProblem {
+    const op = spec.ops[Phaser.Math.Between(0, spec.ops.length - 1)]
+    let a: number, b: number, answer: number
+    if (op === '+') {
+      answer = Phaser.Math.Between(2, spec.maxAnswer)
+      a = Phaser.Math.Between(1, answer - 1)
+      b = answer - a
+    } else {
+      a = Phaser.Math.Between(2, spec.maxAnswer)
+      b = Phaser.Math.Between(1, a - 1)
+      answer = a - b
+    }
+    const read = (n: number) => DIGIT_READING[String(n)] ?? String(n)
+    const choices = new Set<string>([String(answer)])
+    for (let guard = 0; guard < 30 && choices.size < 3; guard++) {
+      const near = answer + Phaser.Math.Between(-2, 2)
+      if (near >= 1 && near <= 9) choices.add(String(near))
+    }
+    return {
+      question: `${a}${op}${b}`,
+      voicePrompt: `${read(a)} ${op === '+' ? 'たす' : 'ひく'} ${read(b)} は？`,
+      answer: String(answer),
+      choices: [...choices],
+    }
+  }
+
+  /** 選択肢バブルを敵を囲むアーチ状に出す（選択肢数に応じて等間隔に生成） */
+  private spawnBubbleArc(labels: string[]): void {
     const n = labels.length
     const arc: Array<[number, number]> = labels.map((_, i) => {
       const u = n <= 1 ? 0 : (i / (n - 1)) * 2 - 1 // -1〜1
@@ -557,17 +758,17 @@ export class Ride25DScene extends Phaser.Scene {
     const positions = (this.enemyIndex + this.purifyStep) % 2 === 1
       ? arc.map(([x, y]) => [-x, y] as [number, number])
       : arc
-
-    this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
-      labels.forEach((label, i) => {
-        const [ox, oy] = positions[i % positions.length]
-        this.createChoiceBubble(label, this.currentKind, GAME_W / 2 + ox, oy, i)
-      })
-      recordSeen(this.currentTarget, this.currentKind)
-      this.stepStartAt = this.time.now
-      this.stepActive = true
-      this.updateDebugHook()
+    labels.forEach((label, i) => {
+      const [ox, oy] = positions[i % positions.length]
+      this.createChoiceBubble(label, this.currentKind, GAME_W / 2 + ox, oy, i)
     })
+  }
+
+  /** 出題の入力受付を開始する共通処理 */
+  private beginStepInput(): void {
+    this.stepStartAt = this.time.now
+    this.stepActive = true
+    this.updateDebugHook()
   }
 
   /**
@@ -610,7 +811,20 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   private speakPrompt(): void {
+    if (this.stageData.mode === 'math') {
+      if (this.currentProblem) voice.speak(this.currentProblem.voicePrompt)
+      return
+    }
     if (this.currentTarget) voice.speak(`${this.currentTarget}！`, { rate: 0.7 })
+  }
+
+  /** 学習統計への記録（math は問題キー・それ以外は文字。既存の記録ルールを共通化） */
+  private recordStat(correct: boolean, reactionMs?: number): void {
+    if (this.stageData.mode === 'math' && this.currentProblem) {
+      recordAnswer(this.currentProblem.question, 'math', correct, reactionMs)
+    } else {
+      recordAnswer(this.currentTarget, this.currentKind, correct, reactionMs)
+    }
   }
 
   private createChoiceBubble(label: string, kind: TargetKind, x: number, y: number, index: number): void {
@@ -659,9 +873,11 @@ export class Ride25DScene extends Phaser.Scene {
     if (!this.stepActive) return
     this.stepActive = false
     const reaction = this.time.now - this.stepStartAt
-    recordAnswer(this.currentTarget, this.currentKind, true, reaction)
+    this.recordStat(true, reaction)
     this.sessionCorrect++
-    if (!this.practiced.includes(this.currentTarget)) this.practiced.push(this.currentTarget)
+    if (this.stageData.mode === 'find' && !this.practiced.includes(this.currentTarget)) {
+      this.practiced.push(this.currentTarget)
+    }
 
     this.hitJuiceAt(b.container.x, b.container.y, 0xffffff)
     b.alive = false
@@ -672,20 +888,71 @@ export class Ride25DScene extends Phaser.Scene {
     this.bubbles = this.bubbles.filter(other => other !== b)
 
     this.bumpCombo()
-    this.showBigLetter(b.label)
     this.wrongTapStreak = 0
-
     this.purifyStep++
     this.advancePurify()
-    this.clearBubbles()
 
+    const isSequence = this.stageData.mode === 'sequence'
+    const wordDone = this.purifyStep >= this.purifyStepsNeeded
+    if (isSequence) {
+      // 単語モード: 途中の文字は読み上げて次へ。残りのバブルはそのまま
+      if (!wordDone) {
+        voice.speak(b.label, { rate: 0.75 })
+        this.time.delayedCall(this.level >= 3 ? 500 : 650, () => this.startPurifyStep())
+        this.updateDebugHook()
+        return
+      }
+      // 単語完成！ 読み上げ＋おおきな称賛演出
+      this.clearBubbles()
+      this.celebrateWord(this.currentWord, this.currentCelebration)
+      this.time.delayedCall(1200, () => this.completePurify())
+      this.updateDebugHook()
+      return
+    }
+
+    this.showBigLetter(b.label)
+    this.clearBubbles()
     // Lv3 はテンポをわずかに上げる
-    if (this.purifyStep >= this.purifyStepsNeeded) {
+    if (wordDone) {
       this.time.delayedCall(this.level >= 3 ? 600 : 700, () => this.completePurify())
     } else {
       this.time.delayedCall(this.level >= 3 ? 850 : 1000, () => this.startPurifyStep())
     }
     this.updateDebugHook()
+  }
+
+  /** 単語完成のお祝い（読み上げ＋大きな表示＋星バースト＋なかまの絵文字） */
+  private celebrateWord(word: string, emoji: string): void {
+    const glow = this.add.image(GAME_W / 2, GAME_H / 2 - 40, 'softglow')
+      .setDepth(8480).setScale(3).setAlpha(0.9).setTint(0xffe9f5)
+    const big = this.add.text(GAME_W / 2, GAME_H / 2 - 60, word, {
+      fontFamily: FONT, fontSize: '150px', fontStyle: 'bold', color: '#ffffff',
+    }).setOrigin(0.5).setDepth(8500).setStroke('#ff8fb0', 14).setScale(0)
+    big.setShadow(0, 6, 'rgba(80,40,120,0.45)', 12)
+    voice.speak(`${word}！`, { rate: 0.85 })
+    this.tweens.add({ targets: big, scale: 1, duration: 300, ease: 'Back.easeOut' })
+    const burst = this.add.particles(0, 0, 'star', {
+      speed: { min: 90, max: 300 }, scale: { start: 1, end: 0 },
+      rotate: { min: 0, max: 360 }, lifespan: 900,
+      tint: [0xffe066, 0xffffff, 0xff8fd0, 0x9ff3ff], emitting: false,
+    }).setDepth(8490)
+    burst.explode(24, GAME_W / 2, GAME_H / 2 - 60)
+    const friends: Phaser.GameObjects.Text[] = []
+    for (let i = 0; i < 3; i++) {
+      const friend = this.add.text(GAME_W / 2 + (i - 1) * 150, GAME_H / 2 + 110, emoji, { fontSize: '64px' })
+        .setOrigin(0.5).setDepth(8500).setScale(0)
+      friends.push(friend)
+      this.tweens.add({ targets: friend, scale: 1, duration: 260, delay: 150 + i * 110, ease: 'Back.easeOut' })
+      this.tweens.add({
+        targets: friend, y: GAME_H / 2 + 75, duration: 320, delay: 150 + i * 110,
+        yoyo: true, repeat: 2, ease: 'Sine.easeOut',
+      })
+    }
+    this.tweens.add({
+      targets: [big, glow, ...friends], alpha: 0, duration: 320, delay: 1400,
+      ease: 'Cubic.easeIn',
+      onComplete: () => { big.destroy(); glow.destroy(); friends.forEach(f => f.destroy()); burst.destroy() },
+    })
   }
 
   private advancePurify(): void {
@@ -846,15 +1113,27 @@ export class Ride25DScene extends Phaser.Scene {
     this.wrongTotal++
 
     this.tweens.add({ targets: b.container, angle: 10, duration: 60, yoyo: true, repeat: 3 })
-    this.showGentleFeedback(b.container.x, b.container.y, `これは「${b.label}」だよ`)
-    voice.speak(`これは、${b.label}、だよ`)
-    // 狙う音をもう一度（音だけの出題なので忘れさせない）
+    // やさしい誤答フィードバック（モード別。叱らない）
+    const seqLater = this.stageData.mode === 'sequence'
+      && this.currentSeq.slice(this.purifyStep + 1).includes(b.label)
+    if (seqLater) {
+      // 順番ちがい: 「さきに ね だよ」
+      this.showGentleFeedback(b.container.x, b.container.y, `さきに「${this.currentTarget}」だよ！`)
+      voice.speak(`さきに、${this.currentTarget}、だよ！`)
+    } else if (this.stageData.mode === 'math') {
+      this.showGentleFeedback(b.container.x, b.container.y, 'うーん、ちがうみたい！')
+      if (this.currentProblem) voice.speak(this.currentProblem.voicePrompt)
+    } else {
+      this.showGentleFeedback(b.container.x, b.container.y, `これは「${b.label}」だよ`)
+      voice.speak(`これは、${b.label}、だよ`)
+    }
+    // 狙いをもう一度伝える（忘れさせない）
     this.time.delayedCall(1600, () => {
-      if (this.stepActive) voice.speak(`${this.currentTarget}！`, { rate: 0.7 })
+      if (this.stepActive) this.speakPrompt()
     })
 
     // 知識の誤りなので統計に記録（撃ち逃し・時間切れは記録しない。失敗になってもここまでの記録は残る）
-    recordAnswer(this.currentTarget, this.currentKind, false)
+    this.recordStat(false)
 
     // ライフも同じ思想: 誤答ショットのときだけ減る
     this.loseLife()
@@ -893,6 +1172,7 @@ export class Ride25DScene extends Phaser.Scene {
   private loseLife(): void {
     if (this.failed) return
     this.lives--
+    sfx.lifeLose()
     const heart = this.heartIcons[this.lives]
     if (heart) {
       heart.setText('🌫️').setAlpha(0.9)
@@ -948,37 +1228,42 @@ export class Ride25DScene extends Phaser.Scene {
   // ============================================================= 手・ビーム
 
   private buildHands(): void {
-    // 用意した手のスプライト（右=発射ポーズ・左=ひらいた待機）。
+    // hands.png を左右に分割した両手スプライト（どちらも前へかざした開いた手）。
     // 文字バブル(6000)より下の深度に置き、文字を絶対に隠さない
-    const rTex = this.textures.get('img-hand-r').getSourceImage()
-    const rScale = 465 / rTex.height
-    const right = this.add.image(0, 0, 'img-hand-r').setOrigin(0.5, 1).setScale(rScale)
-    const handRBaseY = GAME_H + 30
-    this.handR = this.add.container(GAME_W - 168, handRBaseY, [right]).setDepth(5800)
-    const lTex = this.textures.get('img-hand-l').getSourceImage()
-    const left = this.add.image(0, 0, 'img-hand-l').setOrigin(0.5, 1).setScale(335 / lTex.height)
-    const handL = this.add.container(140, GAME_H + 46, [left]).setDepth(5800)
+    const buildHand = (key: string, x: number, baseY: number, height: number) => {
+      const tex = this.textures.get(key).getSourceImage()
+      const scale = height / tex.height
+      const img = this.add.image(0, 0, key).setOrigin(0.5, 1).setScale(scale)
+      const container = this.add.container(x, baseY, [img]).setDepth(5800)
+      return { container, w: tex.width * scale, h: tex.height * scale }
+    }
+    const rBase = GAME_H + 34
+    const lBase = GAME_H + 42
+    const r = buildHand('img-hand-r', GAME_W - 172, rBase, 400)
+    const l = buildHand('img-hand-l', 172, lBase, 400)
+    this.handR = r.container
+    this.handL = l.container
     this.tweens.add({
-      targets: this.handR, y: handRBaseY + 6, duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      targets: this.handR, y: rBase + 6, duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     })
     this.tweens.add({
-      targets: handL, y: GAME_H + 52, duration: 1900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      targets: this.handL, y: lBase + 6, duration: 1900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     })
-    // 指先（ビーム発射点）とブレスレット位置: righthand.png 内の比率で算出
-    // （画像を差し替えたらここの比率だけ合わせる）
-    const rw = rTex.width * rScale
-    const rh = rTex.height * rScale
-    this.fingertip.x = this.handR.x + (0.472 - 0.5) * rw
-    this.fingertip.y = handRBaseY + (0.30 - 1) * rh
-    this.bracelet.x = this.handR.x + (0.54 - 0.5) * rw
-    this.bracelet.y = handRBaseY + (0.635 - 1) * rh
-    // 指先はブレスレットの光と同じシアンでほんのり明滅
-    const glow = this.add.image(this.fingertip.x, this.fingertip.y, 'softglow')
-      .setDepth(5801).setScale(0.22).setTint(0x7fe8ff).setAlpha(0.45)
-      .setBlendMode(Phaser.BlendModes.ADD)
-    this.tweens.add({
-      targets: glow, scale: 0.32, alpha: 0.7, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
-    })
+    // ビーム発射点＝両手の指先（hand-left/right.png 内の比率で算出。
+    // 画像を差し替えたらここの比率だけ合わせる）
+    this.fingertipR.x = this.handR.x + (0.38 - 0.5) * r.w
+    this.fingertipR.y = rBase + (0.13 - 1) * r.h
+    this.fingertipL.x = this.handL.x + (0.62 - 0.5) * l.w
+    this.fingertipL.y = lBase + (0.13 - 1) * l.h
+    // 指先はビームと同じシアンでほんのり明滅（両手）
+    for (const p of [this.fingertipL, this.fingertipR]) {
+      const glow = this.add.image(p.x, p.y, 'softglow')
+        .setDepth(5801).setScale(0.2).setTint(0x7fe8ff).setAlpha(0.4)
+        .setBlendMode(Phaser.BlendModes.ADD)
+      this.tweens.add({
+        targets: glow, scale: 0.3, alpha: 0.65, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      })
+    }
   }
 
   private buildReticle(): void {
@@ -1025,65 +1310,60 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   /**
-   * ブレスレットの光と同じシアン系のビーム:
-   * 白熱した芯＋外側グロー（加算合成）＋ライン上のキラキラ粒子＋着弾フレア
+   * 両手ビーム: 左右の指先から2本のビームが照準の1点に収束する。
+   * 白熱した芯＋太い外側グロー（加算合成）＋ライン上のキラキラ粒子＋大きめの着弾フレア。
+   * 深度は文字バブル(6000)より下＝文字は絶対に隠れない（照準・判定・オートエイムは不変更）。
    */
   private drawBeam(tx: number, ty: number): void {
-    const fx = this.fingertip.x
-    const fy = this.fingertip.y
-    const dx = tx - fx
-    const dy = ty - fy
-    const len = Math.hypot(dx, dy) || 1
-    const px = -dy / len
-    const py = dx / len
-    const wide = 15
-    const tip = 4
-
-    const g = this.add.graphics().setDepth(7500).setBlendMode(Phaser.BlendModes.ADD)
-    const poly = (w1: number, w2: number, color: number, alpha: number) => {
-      g.fillStyle(color, alpha)
-      g.fillPoints([
-        new Phaser.Math.Vector2(fx + px * w1, fy + py * w1),
-        new Phaser.Math.Vector2(tx + px * w2, ty + py * w2),
-        new Phaser.Math.Vector2(tx - px * w2, ty - py * w2),
-        new Phaser.Math.Vector2(fx - px * w1, fy - py * w1),
-      ], true)
+    const g = this.add.graphics().setDepth(5950).setBlendMode(Phaser.BlendModes.ADD)
+    const beamFrom = (fx: number, fy: number) => {
+      const dx = tx - fx
+      const dy = ty - fy
+      const len = Math.hypot(dx, dy) || 1
+      const px = -dy / len
+      const py = dx / len
+      const wide = 24 // 従来15 → 太く
+      const tip = 7
+      const poly = (w1: number, w2: number, color: number, alpha: number) => {
+        g.fillStyle(color, alpha)
+        g.fillPoints([
+          new Phaser.Math.Vector2(fx + px * w1, fy + py * w1),
+          new Phaser.Math.Vector2(tx + px * w2, ty + py * w2),
+          new Phaser.Math.Vector2(tx - px * w2, ty - py * w2),
+          new Phaser.Math.Vector2(fx - px * w1, fy - py * w1),
+        ], true)
+      }
+      poly(wide * 2.2, tip * 2.6, 0x59e0f2, 0.38) // 外側グロー
+      poly(wide, tip * 1.5, 0x9ff3ff, 0.72)
+      poly(wide * 0.42, tip, 0xffffff, 1) // 白熱した芯
+      // ライン上を舞うキラキラ粒子（片手ぶん）
+      const sparks = this.add.particles(0, 0, 'dot', {
+        speed: { min: 10, max: 70 }, scale: { start: 0.5, end: 0 }, lifespan: 280,
+        tint: [0xffffff, 0x9ff3ff, 0x59e0f2], blendMode: 'ADD', emitting: false,
+        emitZone: { type: 'random', source: new Phaser.Geom.Line(fx, fy, tx, ty), quantity: 8 },
+      }).setDepth(5951)
+      sparks.explode(8)
+      this.time.delayedCall(400, () => sparks.destroy())
+      // 指先のマズルフラッシュ
+      const muzzle = this.add.image(fx, fy, 'star').setDepth(5951).setTint(0x9ff3ff).setScale(1)
+        .setBlendMode(Phaser.BlendModes.ADD)
+      this.tweens.add({
+        targets: muzzle, scale: 0.2, alpha: 0, angle: 90, duration: 140,
+        onComplete: () => muzzle.destroy(),
+      })
     }
-    poly(wide * 2.2, tip * 2.6, 0x59e0f2, 0.4) // 外側グロー
-    poly(wide, tip * 1.5, 0x9ff3ff, 0.75)
-    poly(wide * 0.45, tip, 0xffffff, 1) // 白熱した芯
-    // 着弾フレア
+    beamFrom(this.fingertipL.x, this.fingertipL.y)
+    beamFrom(this.fingertipR.x, this.fingertipR.y)
+    // 着弾フレア（一回り大きく。文字より下の深度なので読める）
     g.fillStyle(0xffffff, 0.95)
-    g.fillCircle(tx, ty, 13)
-    g.fillStyle(0x7fe8ff, 0.55)
-    g.fillCircle(tx, ty, 27)
+    g.fillCircle(tx, ty, 18)
+    g.fillStyle(0x7fe8ff, 0.5)
+    g.fillCircle(tx, ty, 38)
     this.tweens.add({ targets: g, alpha: 0, duration: 110, onComplete: () => g.destroy() })
 
-    // ライン上を舞うキラキラ粒子
-    const sparks = this.add.particles(0, 0, 'dot', {
-      speed: { min: 10, max: 70 }, scale: { start: 0.5, end: 0 }, lifespan: 280,
-      tint: [0xffffff, 0x9ff3ff, 0x59e0f2], blendMode: 'ADD', emitting: false,
-      emitZone: { type: 'random', source: new Phaser.Geom.Line(fx, fy, tx, ty), quantity: 12 },
-    }).setDepth(7501)
-    sparks.explode(12)
-    this.time.delayedCall(400, () => sparks.destroy())
-
-    // 指先のマズルフラッシュ＋ブレスレットの発光
-    const muzzle = this.add.image(fx, fy, 'star').setDepth(7501).setTint(0x9ff3ff).setScale(0.9)
-      .setBlendMode(Phaser.BlendModes.ADD)
-    this.tweens.add({
-      targets: muzzle, scale: 0.2, alpha: 0, angle: 90, duration: 140,
-      onComplete: () => muzzle.destroy(),
-    })
-    const braceletFlash = this.add.image(this.bracelet.x, this.bracelet.y, 'softglow')
-      .setDepth(7502).setTint(0x7fe8ff).setScale(0.3).setAlpha(0.9)
-      .setBlendMode(Phaser.BlendModes.ADD)
-    this.tweens.add({
-      targets: braceletFlash, scale: 0.75, alpha: 0, duration: 220,
-      onComplete: () => braceletFlash.destroy(),
-    })
-    // 腕を軽く前へ押し出す（y は常時バウンド tween が使っているため x で表現）
-    this.tweens.add({ targets: this.handR, x: GAME_W - 186, duration: 55, yoyo: true })
+    // 両腕を軽く前へ押し出す（y は常時バウンド tween が使っているため x で表現）
+    this.tweens.add({ targets: this.handR, x: GAME_W - 190, duration: 55, yoyo: true })
+    this.tweens.add({ targets: this.handL, x: 190, duration: 55, yoyo: true })
   }
 
   private fizzle(x: number, y: number): void {
