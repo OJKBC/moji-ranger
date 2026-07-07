@@ -121,6 +121,8 @@ export interface DistractorOptions {
    * 既存 letterStats を参照し、固定ペアの羅列にしない。
    */
   preferWeakPairs?: boolean
+  /** 選択肢に出さない文字（例: 単語つくりでは単語の構成文字すべて） */
+  exclude?: string[]
 }
 
 /**
@@ -130,10 +132,11 @@ export interface DistractorOptions {
  */
 export function pickDistractors(target: string, count: number, opts: DistractorOptions): string[] {
   const { confusables, base } = poolsFor(opts.kind)
+  const excluded = new Set([target, ...(opts.exclude ?? [])])
   const picked: string[] = []
   if (opts.useConfusables) {
     let candidates = (confusables[target] ?? []).filter(
-      c => c !== target && !isSoundSimilar(target, c),
+      c => !excluded.has(c) && !isSoundSimilar(target, c),
     )
     if (opts.preferWeakPairs && candidates.length > 1) {
       const stats = loadProgress().letterStats
@@ -146,7 +149,7 @@ export function pickDistractors(target: string, count: number, opts: DistractorO
       if (!picked.includes(c)) picked.push(c)
     }
   }
-  const rest = base.filter(l => l !== target && !picked.includes(l) && !isSoundSimilar(target, l))
+  const rest = base.filter(l => !excluded.has(l) && !picked.includes(l) && !isSoundSimilar(target, l))
   // Fisher–Yates シャッフル
   for (let i = rest.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))

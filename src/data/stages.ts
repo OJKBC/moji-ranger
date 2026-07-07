@@ -75,19 +75,18 @@ export const STAGES: Stage[] = [
     difficulty: 1,
   },
   {
-    id: 'word-neko',
-    title: '「ねこ」をつくれ！',
+    id: 'word-neko', // 内部キーは変更しない（保存済み進捗を壊さないため）
+    title: 'もじもじアトラクション',
     type: 'hiragana',
     mode: 'sequence',
     unlock: { stageId: 'hiragana-a', minLevel: 1 },
     recommendedAgeMin: 4,
     recommendedAgeMax: 6,
-    missionText: '「ね」→「こ」の じゅんばんで ビーム！',
-    voicePrompts: [
-      'ね、こ、の じゅんばんで うとう！ まずは、ね！',
-      'ねこ を つくろう！ まずは、ね！',
-    ],
+    missionText: 'じゅんばんに うって ことばを つくろう！',
+    voicePrompts: [],
     correctKind: 'hiragana',
+    // 出題は src/data/words.ts の単語プールから（難易度=文字数）。
+    // 以下はプールが空のときのフォールバック
     correctSequence: ['ね', 'こ'],
     word: 'ねこ',
     celebration: '🐱',
@@ -106,6 +105,7 @@ export const STAGES: Stage[] = [
     title: '「3」をさがせ！',
     type: 'number',
     mode: 'find',
+    hidden: true, // 一旦マップから非表示（データ・進捗は温存）
     unlock: { stageId: 'word-neko', minLevel: 1 },
     recommendedAgeMin: 4,
     recommendedAgeMax: 6,
@@ -129,15 +129,21 @@ export const STAGES: Stage[] = [
     difficulty: 2,
   },
   {
-    id: 'math-add-1',
-    title: '「2+1」ゲート！',
+    id: 'math-add-1', // 内部キーは変更しない（保存済み進捗を壊さないため）
+    title: 'さんすうバトル',
     type: 'math',
     mode: 'math',
-    unlock: { stageId: 'number-3', minLevel: 1 },
+    unlock: { stageId: 'word-neko', minLevel: 1 }, // number-3 非表示のため付け替え
     recommendedAgeMin: 5,
     recommendedAgeMax: 6,
     missionText: 'こたえの ゲートを ビームで えらぼう！',
     voicePrompts: [],
+    // 難易度別のランダム出題パラメータ（problems より優先。生成は GameScene）
+    mathLevels: {
+      1: { ops: ['+'], maxAnswer: 5 },
+      2: { ops: ['+'], maxAnswer: 9 },
+      3: { ops: ['+', '-'], maxAnswer: 9 },
+    },
     correctKind: 'number',
     distractors: [],
     problems: [

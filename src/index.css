@@ -392,3 +392,18 @@ body {
   border: 2px solid #7a4dff;
   box-shadow: 0 0 6px rgba(122, 77, 255, 0.45);
 }
+
+/* ---- ステージ失敗（やさしい見せ方・暗転しない） ---- */
+
+.fail-hearts {
+  font-size: clamp(40px, 9vw, 56px);
+  letter-spacing: 6px;
+}
+
+.fail-heading {
+  color: #ffffff;
+  font-size: clamp(24px, 5.5vw, 36px);
+  text-shadow:
+    0 4px 0 #7a4dff,
+    0 8px 18px rgba(0, 0, 0, 0.45);
+}

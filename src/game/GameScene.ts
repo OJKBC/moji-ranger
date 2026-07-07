@@ -6,8 +6,11 @@ import { EventBus } from '../EventBus'
 import { sfx } from '../audio/sfx'
 import { voice } from '../audio/voice'
 import { HEROES } from '../data/stages'
+import { wordsForLevel } from '../data/words'
+import type { WordSpec } from '../data/words'
+import { pickDistractors } from '../learning/distractors'
 import { loadProgress, recordAnswer, recordSeen, recordStageClear } from '../store/progress'
-import type { DifficultyLevel, MathProblem, Stage, StageResult, TargetKind } from '../types'
+import type { DifficultyLevel, MathLevelSpec, MathProblem, Stage, StageResult, TargetKind } from '../types'
 
 export const GAME_W = 960
 export const GAME_H = 640
@@ -80,8 +83,18 @@ export class GameScene extends Phaser.Scene {
 
   /** sequence モード: いま何文字目か */
   private seqIndex = 0
+  /** sequence モード: 今ラウンドの単語（words.ts のプールからラウンドごとに選ぶ） */
+  private currentSeq: string[] = []
+  private currentWord = ''
+  private currentCelebration = '⭐'
+  private wordQueue: WordSpec[] = []
   /** math モード: 現在の問題 */
   private currentProblem: MathProblem | null = null
+
+  // ライフ制: 誤答（別の文字・数字を撃った）でのみ1減。撃ち逃し・時間切れでは減らない
+  private lives = 3
+  private heartIcons: Phaser.GameObjects.Text[] = []
+  private failed = false
 
   /**
    * 難易度 1〜3（2D 固定画面ステージ用）:
@@ -96,9 +109,9 @@ export class GameScene extends Phaser.Scene {
     this.level = difficulty
   }
 
-  /** 難易度によるターゲット数の加算（画面が破綻しない範囲で） */
+  /** 難易度によるターゲット数の加算（配置グリッドが3×2=6スロットのため最大6） */
   private targetCount(): number {
-    return Math.min(8, this.stageData.targetsPerRound + (this.level - 1))
+    return Math.min(6, this.stageData.targetsPerRound + (this.level - 1))
   }
 
   /** 難易度によるターゲット移動速度の倍率 */
@@ -125,6 +138,7 @@ export class GameScene extends Phaser.Scene {
     this.buildMissionBar()
     this.buildRoundDots()
     this.buildComboBadge()
+    this.buildHearts()
     this.buildAmbientMonster()
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => this.shoot(p.x, p.y))
@@ -141,7 +155,7 @@ export class GameScene extends Phaser.Scene {
   /** いま撃つべきラベル */
   private expectedLabel(): string {
     const stage = this.stageData
-    if (stage.mode === 'sequence') return stage.correctSequence![this.seqIndex]
+    if (stage.mode === 'sequence') return this.currentSeq[this.seqIndex]
     if (stage.mode === 'math') return this.currentProblem!.answer
     return stage.correctAnswer!
   }
@@ -355,8 +369,12 @@ export class GameScene extends Phaser.Scene {
       voice.speak(this.currentProblem.voicePrompt)
       return
     }
-    if (stage.mode === 'sequence' && this.seqIndex > 0) {
-      voice.speak(`つぎは、${this.expectedLabel()}！`)
+    if (stage.mode === 'sequence' && this.currentSeq.length > 0) {
+      if (this.seqIndex > 0) {
+        voice.speak(`つぎは、${this.expectedLabel()}！`)
+      } else {
+        voice.speak(`${this.currentSeq.join('、')}、の じゅんばんで うとう！ まずは、${this.currentSeq[0]}！`)
+      }
       return
     }
     const prompts = stage.voicePrompts
@@ -413,22 +431,73 @@ export class GameScene extends Phaser.Scene {
 
   private spawnSequenceRound(): void {
     const stage = this.stageData
-    const seq = stage.correctSequence!
-    const count = this.struggledLastRound ? seq.length + 1 : this.targetCount()
-    const distractors = Phaser.Utils.Array.Shuffle([...stage.distractors]).slice(0, Math.max(0, count - seq.length))
+    // 単語プール（難易度=文字数）からラウンドごとに出題。シャッフルした列を使い切ったら補充
+    if (this.wordQueue.length === 0) {
+      const pool = wordsForLevel(this.level)
+      this.wordQueue = Phaser.Utils.Array.Shuffle(
+        pool.length > 0 ? [...pool] : [{ word: stage.word ?? 'ねこ', celebration: stage.celebration ?? '⭐' }],
+      )
+    }
+    const spec = this.wordQueue.shift()!
+    this.currentWord = spec.word
+    this.currentSeq = [...spec.word]
+    this.currentCelebration = spec.celebration
+    const seq = this.currentSeq
+
+    // まぎらわしい選択肢は単語の構成文字を除いて動的生成（音類似も除外される）
+    const count = Math.max(this.struggledLastRound ? seq.length + 1 : this.targetCount(), seq.length + 1)
+    const distractors = pickDistractors(seq[0], count - seq.length, {
+      kind: stage.correctKind,
+      useConfusables: this.level >= 2,
+      preferWeakPairs: this.level >= 2,
+      exclude: seq,
+    })
     const labels = Phaser.Utils.Array.Shuffle([
       ...seq.map(s => ({ label: s, kind: stage.correctKind })),
-      ...distractors,
+      ...distractors.map(d => ({ label: d, kind: stage.correctKind })),
     ])
     const slots = this.pickSlots(labels.length)
-    labels.forEach((spec, i) => this.createBubbleTarget(spec.label, spec.kind, slots[i].x, slots[i].y, i))
+    labels.forEach((s, i) => this.createBubbleTarget(s.label, s.kind, slots[i].x, slots[i].y, i))
     for (const s of seq) recordSeen(s, stage.correctKind)
     this.setMissionText(`まずは「${seq[0]}」！`)
   }
 
+  /**
+   * 難易度パラメータ（演算種別・答えの最大値）から1問をランダム生成する。
+   * 引き算は答えが必ず1以上（0以下になる問題は作らない）。
+   */
+  private makeMathProblem(spec: MathLevelSpec): MathProblem {
+    const op = spec.ops[Phaser.Math.Between(0, spec.ops.length - 1)]
+    let a: number, b: number, answer: number
+    if (op === '+') {
+      answer = Phaser.Math.Between(2, spec.maxAnswer)
+      a = Phaser.Math.Between(1, answer - 1)
+      b = answer - a
+    } else {
+      a = Phaser.Math.Between(2, spec.maxAnswer)
+      b = Phaser.Math.Between(1, a - 1)
+      answer = a - b
+    }
+    const read = (n: number) => DIGIT_READING[String(n)] ?? String(n)
+    const choices = new Set<string>([String(answer)])
+    for (let guard = 0; guard < 30 && choices.size < 3; guard++) {
+      const near = answer + Phaser.Math.Between(-2, 2)
+      if (near >= 1 && near <= 9) choices.add(String(near))
+    }
+    return {
+      question: `${a}${op}${b}`,
+      voicePrompt: `${read(a)} ${op === '+' ? 'たす' : 'ひく'} ${read(b)} は？`,
+      answer: String(answer),
+      choices: [...choices],
+    }
+  }
+
   private spawnMathRound(): void {
     const stage = this.stageData
-    const problem = stage.problems![this.roundIndex % stage.problems!.length]
+    const levelSpec = stage.mathLevels?.[this.level]
+    const problem = levelSpec
+      ? this.makeMathProblem(levelSpec)
+      : stage.problems![this.roundIndex % stage.problems!.length]
     this.currentProblem = problem
     const choices = Phaser.Utils.Array.Shuffle([...problem.choices])
     const y = PLAY.top + 0.55 * (PLAY.bottom - PLAY.top)
@@ -658,7 +727,7 @@ export class GameScene extends Phaser.Scene {
     if (stage.mode === 'sequence') {
       this.seqIndex++
       recordAnswer(t.label, t.kind, true, reaction)
-      const seq = stage.correctSequence!
+      const seq = this.currentSeq
       if (this.seqIndex < seq.length) {
         // 途中の1文字: 文字を見せて、次を促す
         this.showBigLetter(t.label, 0.7)
@@ -670,7 +739,7 @@ export class GameScene extends Phaser.Scene {
         return
       }
       // 単語完成！
-      this.completeRound(() => this.celebrateWord(stage.word!, stage.celebration ?? '⭐'))
+      this.completeRound(() => this.celebrateWord(this.currentWord, this.currentCelebration))
       return
     }
 
@@ -738,6 +807,15 @@ export class GameScene extends Phaser.Scene {
     voice.speak(`${word}！`, { rate: 0.85 })
     this.tweens.add({ targets: big, scale: 1, duration: 300, ease: 'Back.easeOut' })
 
+    // 星のバースト（単語完成のごほうび感を強める）
+    const burst = this.add.particles(0, 0, 'star', {
+      speed: { min: 90, max: 300 }, scale: { start: 1, end: 0 },
+      rotate: { min: 0, max: 360 }, lifespan: 900,
+      tint: [0xffe066, 0xffffff, 0xff8fd0, 0x9ff3ff], emitting: false,
+    }).setDepth(79)
+    burst.explode(24, GAME_W / 2, GAME_H / 2 - 60)
+    this.time.delayedCall(1100, () => burst.destroy())
+
     // なかまが よろこんで はねる
     const friends: Phaser.GameObjects.Text[] = []
     for (let i = 0; i < 3; i++) {
@@ -802,7 +880,7 @@ export class GameScene extends Phaser.Scene {
     const stage = this.stageData
     const expected = this.expectedLabel()
     const isLaterInSequence =
-      stage.mode === 'sequence' && stage.correctSequence!.slice(this.seqIndex + 1).includes(t.label)
+      stage.mode === 'sequence' && this.currentSeq.slice(this.seqIndex + 1).includes(t.label)
 
     if (isLaterInSequence) {
       // 順番ちがい: 「さきに ね だよ」
@@ -816,9 +894,13 @@ export class GameScene extends Phaser.Scene {
       voice.speak(`これは、${t.label}、だよ`)
     }
 
-    // 出題に対する誤答として記録（後の再出題の材料）
+    // 出題に対する誤答として記録（後の再出題の材料。失敗になってもここまでの記録は残る）
     const stat = this.statKey()
     recordAnswer(stat.label, stat.kind, false)
+
+    // ライフは「別の文字・数字を撃って間違えたとき」だけ減る（撃ち逃し・時間切れでは減らない）
+    this.loseLife()
+    if (this.failed) return
 
     // 2回間違えたら: やさしく助ける
     if (this.wrongThisRound === 2) this.easeCurrentRound()
@@ -827,6 +909,50 @@ export class GameScene extends Phaser.Scene {
       this.wrongTapStreak = 0
       this.glowCorrectTarget()
     }
+  }
+
+  // ------------------------------------------------------------------ ライフ
+
+  /** ライフ表示（ハート3つ・右上の HUD 内） */
+  private buildHearts(): void {
+    this.heartIcons = []
+    for (let i = 0; i < this.lives; i++) {
+      const heart = this.add.text(GAME_W - 130 + i * 38, 52, '💖', { fontSize: '27px' })
+        .setOrigin(0.5).setDepth(90)
+      this.heartIcons.push(heart)
+    }
+  }
+
+  /**
+   * ライフを1減らす。ハートは割れずに「もやもや」に包まれる見せ方。
+   * 残り1（=2回ミス）になった時点で必ず正解を光らせ、負ける前に助け舟を出す。
+   */
+  private loseLife(): void {
+    if (this.failed) return
+    this.lives--
+    const heart = this.heartIcons[this.lives]
+    if (heart) {
+      heart.setText('🌫️').setAlpha(0.9)
+      this.tweens.add({ targets: heart, scale: 1.3, duration: 140, yoyo: true })
+    }
+    if (this.lives === 1) {
+      this.glowCorrectTarget()
+    } else if (this.lives <= 0) {
+      this.failStage()
+    }
+  }
+
+  /** ステージ失敗。演出はやさしく（暗転なし・React 側のオーバーレイで即再挑戦へ） */
+  private failStage(): void {
+    this.failed = true
+    this.roundActive = false
+    this.acceptInput = false
+    this.clearRoundTargets()
+    voice.cancel()
+    this.time.delayedCall(600, () => EventBus.emit('stage-failed', {
+      stageId: this.stageData.id,
+      difficulty: this.level,
+    }))
   }
 
   private showGentleFeedback(t: FloatingTarget, text: string): void {

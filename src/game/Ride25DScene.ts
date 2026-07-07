@@ -125,6 +125,11 @@ export class Ride25DScene extends Phaser.Scene {
   private stepStartAt = 0
   private stepActive = false
 
+  // ライフ制: 誤答（別の文字を撃った）でのみ1減。撃ち逃しでは減らない
+  private lives = 3
+  private heartIcons: Phaser.GameObjects.Text[] = []
+  private failed = false
+
   // UI・統計
   private missionLabel!: Phaser.GameObjects.Text
   private missionBar!: Phaser.GameObjects.Container
@@ -191,6 +196,7 @@ export class Ride25DScene extends Phaser.Scene {
     this.buildMissionBar()
     this.buildComboBadge()
     this.buildBattleCounter()
+    this.buildHearts()
 
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       this.aim.x = p.x
@@ -847,8 +853,12 @@ export class Ride25DScene extends Phaser.Scene {
       if (this.stepActive) voice.speak(`${this.currentTarget}！`, { rate: 0.7 })
     })
 
-    // 知識の誤りなので統計に記録（撃ち逃し・時間切れは記録しない）
+    // 知識の誤りなので統計に記録（撃ち逃し・時間切れは記録しない。失敗になってもここまでの記録は残る）
     recordAnswer(this.currentTarget, this.currentKind, false)
+
+    // ライフも同じ思想: 誤答ショットのときだけ減る
+    this.loseLife()
+    if (this.failed) return
 
     if (this.wrongThisStep === 2) {
       const correct = this.bubbles.find(x => x.alive && x.label === this.currentTarget)
@@ -862,6 +872,52 @@ export class Ride25DScene extends Phaser.Scene {
       this.wrongTapStreak = 0
       this.glowCorrectBubble()
     }
+  }
+
+  // ------------------------------------------------------------------ ライフ
+
+  /** ライフ表示（ハート3つ・右上の HUD 内） */
+  private buildHearts(): void {
+    this.heartIcons = []
+    for (let i = 0; i < this.lives; i++) {
+      const heart = this.add.text(GAME_W - 130 + i * 38, 52, '💖', { fontSize: '27px' })
+        .setOrigin(0.5).setDepth(8000)
+      this.heartIcons.push(heart)
+    }
+  }
+
+  /**
+   * ライフを1減らす。ハートは割れずに「もやもや」に包まれる見せ方。
+   * 残り1（=2回ミス）になった時点で必ず正解を光らせ、負ける前に助け舟を出す。
+   */
+  private loseLife(): void {
+    if (this.failed) return
+    this.lives--
+    const heart = this.heartIcons[this.lives]
+    if (heart) {
+      heart.setText('🌫️').setAlpha(0.9)
+      this.tweens.add({ targets: heart, scale: 1.3, duration: 140, yoyo: true })
+    }
+    if (this.lives === 1) {
+      this.glowCorrectBubble()
+    } else if (this.lives <= 0) {
+      this.failStage()
+    }
+  }
+
+  /** ステージ失敗。演出はやさしく（暗転なし・React 側のオーバーレイで即再挑戦へ） */
+  private failStage(): void {
+    this.failed = true
+    this.stepActive = false
+    this.acceptInput = false
+    this.phase = 'finished'
+    voice.cancel()
+    this.clearBubbles()
+    this.setMissionText('')
+    this.time.delayedCall(600, () => EventBus.emit('stage-failed', {
+      stageId: this.stageData.id,
+      difficulty: this.level,
+    }))
   }
 
   private glowCorrectBubble(): void {

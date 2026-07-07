@@ -104,6 +104,14 @@ export interface MathProblem {
 /** ステージ内の難易度段階。1→2→3 の順に解放される */
 export type DifficultyLevel = 1 | 2 | 3
 
+/** さんすうバトルの難易度別出題パラメータ（毎ラウンドのランダム生成に使う） */
+export interface MathLevelSpec {
+  /** 使う演算の種類 */
+  ops: Array<'+' | '-'>
+  /** 答えの最大値（最小は常に1。0以下になる問題は生成しない） */
+  maxAnswer: number
+}
+
 export interface Stage {
   id: string
   title: string
@@ -114,6 +122,10 @@ export interface Stage {
    * 「stageId の難易度 minLevel をクリア済み」で解放される。
    */
   unlock?: { stageId: string; minLevel: DifficultyLevel }
+  /** true ならステージマップに出さない（データ・進捗は温存したまま無効化） */
+  hidden?: boolean
+  /** math モード: 難易度別のランダム出題パラメータ（あれば problems より優先） */
+  mathLevels?: Record<number, MathLevelSpec>
   /** ゲームシーンの描画方式。'2.5d'=オンレール対峙 / 省略時 '2d'=固定画面（レガシー） */
   renderer?: '2d' | '2.5d'
   /** 2.5d 用: 連戦→ボスのバトル定義（推奨） */

@@ -10,7 +10,13 @@ import type { DifficultyLevel, Stage, StageResult } from './types'
 import bgUrl from './assets/bg.jpg'
 import heroesUrl from './assets/heroes.png'
 
-type Screen = 'title' | 'map' | 'game' | 'result'
+type Screen = 'title' | 'map' | 'game' | 'result' | 'failed'
+
+/** ライフ0時に Phaser から届く失敗情報 */
+interface StageFailed {
+  stageId: string
+  difficulty: DifficultyLevel
+}
 
 /**
  * リザルト後の「つぎ」の行き先。
@@ -26,7 +32,7 @@ function nextChallengeOf(result: StageResult): { stage: Stage; level: Difficulty
   const progress = loadProgress()
   const index = STAGES.findIndex(s => s.id === result.stageId)
   for (let i = index + 1; i < STAGES.length; i++) {
-    if (isStageUnlocked(STAGES[i], progress)) {
+    if (!STAGES[i].hidden && isStageUnlocked(STAGES[i], progress)) {
       return { stage: STAGES[i], level: nextLevelOf(progress, STAGES[i].id) }
     }
   }
@@ -38,6 +44,7 @@ export default function App() {
   const [stage, setStage] = useState<Stage>(STAGES[0])
   const [difficulty, setDifficulty] = useState<DifficultyLevel>(1)
   const [result, setResult] = useState<StageResult | null>(null)
+  const [failInfo, setFailInfo] = useState<StageFailed | null>(null)
   const [confirmQuit, setConfirmQuit] = useState(false)
   const [playKey, setPlayKey] = useState(0)
 
@@ -47,9 +54,16 @@ export default function App() {
       setResult(r)
       setScreen('result')
     }
+    const onFailed = (f: StageFailed) => {
+      setConfirmQuit(false)
+      setFailInfo(f)
+      setScreen('failed')
+    }
     EventBus.on('stage-clear', onClear)
+    EventBus.on('stage-failed', onFailed)
     return () => {
       EventBus.off('stage-clear', onClear)
+      EventBus.off('stage-failed', onFailed)
     }
   }, [])
 
@@ -135,6 +149,31 @@ export default function App() {
             </div>
           )}
         </>
+      )}
+
+      {screen === 'failed' && failInfo && (
+        <div className="overlay-screen">
+          <button
+            className="back-button"
+            onClick={() => { sfx.uiTap(); setScreen('map') }}
+            aria-label="ステージマップへもどる"
+          >
+            ⬅
+          </button>
+          {/* やさしい失敗表現: 暗転させない・叱らない・すぐ再挑戦できる */}
+          <div className="fail-hearts">🌫️ 🌫️ 🌫️</div>
+          <h2 className="fail-heading">もやもやに つつまれちゃった！</h2>
+          <p className="result-detail">だいじょうぶ！ もういちど やってみよう</p>
+          <button
+            className="big-button"
+            onClick={() => { sfx.uiTap(); playStage(stage, failInfo.difficulty) }}
+          >
+            🔁 もういちど
+          </button>
+          <button className="sub-button" onClick={() => { sfx.uiTap(); setScreen('map') }}>
+            🗺️ ステージマップへ
+          </button>
+        </div>
       )}
 
       {screen === 'result' && result && (

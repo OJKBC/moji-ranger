@@ -47,7 +47,7 @@ export function StageMap({ onSelect, onBack }: Props) {
         <div className="map-total">⭐ {progress.totalStars}</div>
       </div>
       <div className="map-grid">
-        {STAGES.map((stage, i) => {
+        {STAGES.filter(s => !s.hidden).map((stage, i) => {
           const unlocked = isStageUnlocked(stage, progress)
           const cleared = clearedLevelOf(progress, stage.id)
           return (
