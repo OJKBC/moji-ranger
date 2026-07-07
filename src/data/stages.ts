@@ -14,7 +14,7 @@ export const STAGES: Stage[] = [
     renderer: '2.5d',
     recommendedAgeMin: 4,
     recommendedAgeMax: 6,
-    missionText: 'もやもやを じょうかしよう！',
+    missionText: 'おとを きいて ねらおう！',
     voicePrompts: [],
     correctAnswer: 'あ',
     correctKind: 'hiragana',

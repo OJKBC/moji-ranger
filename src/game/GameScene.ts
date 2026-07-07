@@ -717,7 +717,7 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(80).setStroke('#ff8fb0', 14)
     big.setShadow(0, 6, 'rgba(80,40,120,0.45)', 12)
     big.setScale(0)
-    voice.speak(`${word}！ できたー！`, { rate: 0.85 })
+    voice.speak(`${word}！`, { rate: 0.85 })
     this.tweens.add({ targets: big, scale: 1, duration: 300, ease: 'Back.easeOut' })
 
     // なかまが よろこんで はねる
@@ -758,7 +758,7 @@ export class GameScene extends Phaser.Scene {
     big.setScale(0)
     eq.setScale(0)
     const reading = DIGIT_READING[problem.answer] ?? problem.answer
-    voice.speak(`せいかい！ こたえは、${reading}！`, { rate: 0.85 })
+    voice.speak(`${reading}！`, { rate: 0.85 })
     this.tweens.add({ targets: eq, scale: 1, duration: 220, ease: 'Back.easeOut' })
     this.tweens.add({ targets: big, scale: 1, duration: 280, delay: 60, ease: 'Back.easeOut' })
     this.tweens.add({
@@ -792,7 +792,7 @@ export class GameScene extends Phaser.Scene {
       voice.speak(`さきに、${expected}、だよ！`)
     } else if (stage.mode === 'math') {
       this.showGentleFeedback(t, 'うーん、ちがうみたい！')
-      voice.speak(`うーん！ ${this.currentProblem!.voicePrompt}`)
+      voice.speak(this.currentProblem!.voicePrompt)
     } else {
       this.showGentleFeedback(t, `これは「${t.label}」だよ`)
       voice.speak(`これは、${t.label}、だよ`)
@@ -873,7 +873,6 @@ export class GameScene extends Phaser.Scene {
     this.acceptInput = false
     this.clearRoundTargets()
     sfx.fanfare()
-    voice.speak('すごーい！ ぜんぶ クリアだね！')
 
     // 紙吹雪
     const confetti = this.add.particles(0, 0, 'dot', {

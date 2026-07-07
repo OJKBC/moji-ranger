@@ -194,8 +194,8 @@ export class Ride25DScene extends Phaser.Scene {
     this.spawnApproaching(false)
     this.phase = 'riding'
     this.targetSpeed = this.cruiseSpeed
-    this.setMissionText('もやもやを じょうかしよう！')
-    this.time.delayedCall(500, () => voice.speak('もじシティを パトロールだ！ もやもやを じょうかしよう！'))
+    // セリフは出題（文字の読み上げ）だけに絞る。移動中はミッションバーも出さない
+    this.setMissionText('')
     this.updateDebugHook()
   }
 
@@ -462,9 +462,6 @@ export class Ride25DScene extends Phaser.Scene {
       this.buildPurifyMeter(this.purifyStepsNeeded)
     }
 
-    if (isBoss) {
-      voice.speak('おおきな もやもや ボスだ！ がんばれ！')
-    }
     // すぐに出題（待たせない）
     this.time.delayedCall(isBoss ? 900 : 180, () => this.startPurifyStep())
   }
@@ -476,12 +473,9 @@ export class Ride25DScene extends Phaser.Scene {
     bg.fillRoundedRect(-width / 2 - 8, -17, width + 16, 34, 17)
     bg.lineStyle(3, 0xffd94d, 1)
     bg.strokeRoundedRect(-width / 2 - 8, -17, width + 16, 34, 17)
-    const label = this.add.text(-width / 2 - 20, 0, 'じょうか', {
-      fontFamily: FONT, fontSize: '20px', fontStyle: 'bold', color: '#ffd94d',
-    }).setOrigin(1, 0.5)
     this.meterCells = []
     const cellW = (width - (steps + 1) * 6) / steps
-    const items: Phaser.GameObjects.GameObject[] = [bg, label]
+    const items: Phaser.GameObjects.GameObject[] = [bg]
     for (let i = 0; i < steps; i++) {
       const cell = this.add.rectangle(-width / 2 + 6 + i * (cellW + 6) + cellW / 2, 0, cellW, 20, 0x22d3ee)
         .setAlpha(0.16)
@@ -697,8 +691,6 @@ export class Ride25DScene extends Phaser.Scene {
     const m = this.monster
     if (!m) return
     const isBoss = this.bossActive
-    const praises = ['やったー！', 'ピカピカ！', 'ありがとう！']
-    voice.speak(isBoss ? 'ボスを じょうか！ きみは もじレンジャーだ！' : praises[this.enemyIndex % praises.length])
     sfx.purify()
     if (isBoss) this.time.delayedCall(400, () => sfx.fanfare())
 
@@ -785,25 +777,23 @@ export class Ride25DScene extends Phaser.Scene {
       this.fillCounterCrown()
       this.pending = 'goal'
       this.nextEventAt = this.progress + this.battle.rideDistance * 0.9
-      this.setMissionText('ゴールへ すすめー！')
-      voice.speak('ゴールへ すすめー！')
+      this.setMissionText('')
     } else {
       this.fillCounterDot(this.enemyIndex)
       this.enemyIndex++
       if (this.enemyIndex >= this.battle.enemyCount) {
-        // ボス予兆: ゆっくり見上げる＋低い気配
+        // ボス予兆: ゆっくり見上げる＋低い気配（効果音のみ）
         this.pending = 'boss'
         this.nextEventAt = this.progress + this.battle.rideDistance * 1.3
         this.spawnApproaching(true)
-        this.setMissionText('おおきいのが くるぞ…！')
+        this.setMissionText('')
         sfx.omen()
-        this.time.delayedCall(400, () => voice.speak('…おや？ おおきな もやもやが やってくる…！'))
         this.tweens.add({ targets: this, lookUpY: 26, duration: 1400, ease: 'Sine.easeInOut' })
       } else {
         this.pending = 'enemy'
         this.nextEventAt = this.progress + this.battle.rideDistance
         this.spawnApproaching(false)
-        this.setMissionText('つぎの もやもやだ！')
+        this.setMissionText('')
       }
     }
     if (wasBoss) {
@@ -1078,6 +1068,8 @@ export class Ride25DScene extends Phaser.Scene {
 
   private setMissionText(text: string): void {
     this.missionLabel.setText(text)
+    // 出題インストラクション以外は表示しない（空文字でバーごと隠す）
+    this.tweens.add({ targets: this.missionBar, alpha: text ? 1 : 0, duration: 200 })
   }
 
   private buildComboBadge(): void {
@@ -1171,7 +1163,6 @@ export class Ride25DScene extends Phaser.Scene {
     this.speed = 0
     this.targetSpeed = 0
     sfx.fanfare()
-    voice.speak('ゴール！ きょうの パトロール、だいせいこう！')
 
     const banner = this.add.text(GAME_W / 2, GAME_H / 2 - 40, 'ゴール！', {
       fontFamily: FONT, fontSize: '110px', fontStyle: 'bold', color: '#ffffff',
