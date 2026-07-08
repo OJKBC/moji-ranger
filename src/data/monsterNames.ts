@@ -82,6 +82,27 @@ export const MONSTER_NAMES: Record<string, string> = {
   'monster-strong-42': 'おうごんとう',
   'monster-strong-43': 'はなかまきり',
   'monster-strong-44': 'きんじし',
+  // --- 2026-07-08 追加分その2（つよい・幻想生物シリーズ） ---
+  'monster-strong-45': 'ゆきまじん',
+  'monster-strong-46': 'きつねまい',
+  'monster-strong-47': 'こおりのせい',
+  'monster-strong-48': 'おばけきし',
+  'monster-strong-49': 'らっぱばな',
+  'monster-strong-50': 'かいりゅう',
+  'monster-strong-51': 'もこさま',
+  'monster-strong-52': 'いしこうもり',
+  'monster-strong-53': 'かさくらげ',
+  'monster-strong-54': 'くじゃくおう',
+  'monster-strong-55': 'たぬきせんにん',
+  'monster-strong-56': 'きんさそり',
+  'monster-strong-57': 'ほしりゅう',
+  'monster-strong-58': 'うさぎきし',
+  'monster-strong-59': 'ほしおおかみ',
+  'monster-strong-60': 'からくりきりん',
+  'monster-strong-61': 'かえるがか',
+  'monster-strong-62': 'ゆめうま',
+  'monster-strong-63': 'がひめ',
+  'monster-strong-64': 'もみじしか',
 }
 
 /** モンスターIDの一覧（ずかんの並び順: よわい→つよい） */

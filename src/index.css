@@ -594,3 +594,75 @@ body {
   background: #ffc94d;
   border: none;
 }
+
+/* ---- 保護者向け（ずかんのバックアップ/復元・親ゲート） ---- */
+
+.parent-link {
+  font-family: inherit;
+  align-self: center;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.65);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 10px;
+  text-decoration: underline;
+}
+
+.parent-box {
+  gap: 12px;
+}
+
+.parent-title {
+  font-size: clamp(18px, 4.5vw, 24px);
+  font-weight: bold;
+  color: #3a3a70;
+}
+
+.parent-note {
+  font-size: clamp(13px, 3.2vw, 16px);
+  color: #5a5a88;
+}
+
+.parent-input {
+  font-family: inherit;
+  font-size: 24px;
+  font-weight: bold;
+  text-align: center;
+  width: 130px;
+  padding: 8px;
+  border: 3px solid #ffc94d;
+  border-radius: 14px;
+  color: #3a3a70;
+}
+
+.parent-paste {
+  font-family: monospace;
+  font-size: 12px;
+  width: 100%;
+  height: 64px;
+  padding: 8px;
+  border: 2px solid #d6a24d;
+  border-radius: 12px;
+  resize: none;
+  color: #3a3a70;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.parent-box .sub-button {
+  color: #3a3a70;
+  border-color: #d6a24d;
+  background: rgba(255, 217, 77, 0.25);
+  width: 100%;
+}
+
+/* リザルトの控えめなバックアップ促し */
+.backup-hint {
+  font-size: clamp(12px, 3vw, 14px);
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(122, 77, 255, 0.35);
+  border-radius: 12px;
+  padding: 8px 14px;
+  line-height: 1.5;
+}

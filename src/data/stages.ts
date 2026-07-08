@@ -45,8 +45,7 @@ export const STAGES: Stage[] = [
     type: 'katakana',
     mode: 'find',
     renderer: '2.5d',
-    // ひらがなこうえんの難易度3をクリアすると解放
-    unlock: { stageId: 'hiragana-a', minLevel: 3 },
+    // ステージ自体はロックしない（最初から選べる）。難易度1→2→3のゲートは各ステージ内で維持
     recommendedAgeMin: 4,
     recommendedAgeMax: 6,
     missionText: 'おとを きいて ねらおう！',
@@ -80,7 +79,6 @@ export const STAGES: Stage[] = [
     type: 'hiragana',
     mode: 'sequence',
     renderer: '2.5d', // 画面仕様はひらがなこうえんと共通（差分は出題内容だけ）
-    unlock: { stageId: 'hiragana-a', minLevel: 1 },
     recommendedAgeMin: 4,
     recommendedAgeMax: 6,
     missionText: 'じゅんばんに うって ことばを つくろう！',
@@ -144,7 +142,6 @@ export const STAGES: Stage[] = [
     type: 'math',
     mode: 'math',
     renderer: '2.5d', // 画面仕様はひらがなこうえんと共通（差分は出題内容だけ）
-    unlock: { stageId: 'word-neko', minLevel: 1 }, // number-3 非表示のため付け替え
     recommendedAgeMin: 5,
     recommendedAgeMax: 6,
     missionText: 'こたえの ゲートを ビームで えらぼう！',

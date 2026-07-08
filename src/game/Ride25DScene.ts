@@ -1254,6 +1254,7 @@ export class Ride25DScene extends Phaser.Scene {
     this.captureState = 'result'
     this.updateCaptureHook()
     recordCaptureSuccess(monsterId)
+    EventBus.emit('monster-captured', { monsterId })
     sfx.captureSuccess()
     const lockRing = this.add.image(ball.x, ball.y, 'ring')
       .setDepth(8210).setTint(0xffe066).setScale(0.6)
@@ -1265,11 +1266,30 @@ export class Ride25DScene extends Phaser.Scene {
       tint: [0xffe066, 0xffffff, 0xff8fd0, 0x9ff3ff], emitting: false,
     }).setDepth(8210)
     confetti.explode(30, ball.x, ball.y)
-    const label = this.showCaptureText('なかまになった！', 0xffe066)
+
+    // なかまになったモンスターの画像＋なまえを大きく表示（ずかんと同じデータソース）
+    const texH = this.textures.get(m.texture.key).getSourceImage().height
+    const pScale = 250 / texH
+    const portraitGlow = this.add.image(GAME_W / 2, 235, 'softglow')
+      .setDepth(8490).setScale(2.4).setTint(0xfff2c0).setAlpha(0)
+    const portrait = this.add.image(GAME_W / 2, 235, m.texture.key)
+      .setDepth(8500).setScale(pScale * 0.6).setAlpha(0)
+    this.tweens.add({ targets: portrait, alpha: 1, scale: pScale, duration: 380, ease: 'Back.easeOut' })
+    this.tweens.add({ targets: portraitGlow, alpha: 0.9, duration: 380 })
+    const nameLabel = this.add.text(GAME_W / 2, 388, monsterName(monsterId), {
+      fontFamily: FONT, fontSize: '52px', fontStyle: 'bold', color: '#ffffff',
+    }).setOrigin(0.5).setDepth(8500).setStroke('#7a4dff', 12).setScale(0)
+    nameLabel.setShadow(0, 5, 'rgba(80,40,120,0.45)', 10)
+    this.tweens.add({ targets: nameLabel, scale: 1, duration: 300, delay: 200, ease: 'Back.easeOut' })
+
+    const label = this.showCaptureText('なかまになった！', 0xffe066, 462)
     voice.speak(`${monsterName(monsterId)}、なかまになった！`)
-    this.time.delayedCall(2100, () => {
+    this.time.delayedCall(2200, () => {
       confetti.destroy()
       label.destroy()
+      portrait.destroy()
+      portraitGlow.destroy()
+      nameLabel.destroy()
       this.finishCaptureFlow([ball, m, glow])
     })
   }
@@ -1311,8 +1331,8 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   /** 捕獲結果のテキスト表示（画面中央下・モンスターを隠さない） */
-  private showCaptureText(text: string, tint: number): Phaser.GameObjects.Text {
-    const label = this.add.text(GAME_W / 2, 430, text, {
+  private showCaptureText(text: string, tint: number, y = 430): Phaser.GameObjects.Text {
+    const label = this.add.text(GAME_W / 2, y, text, {
       fontFamily: FONT, fontSize: '46px', fontStyle: 'bold', color: '#ffffff',
     }).setOrigin(0.5).setDepth(8500).setStroke('#3a3a70', 10).setScale(0)
     label.setTint(tint)
@@ -1361,45 +1381,80 @@ export class Ride25DScene extends Phaser.Scene {
     this.wrongTotal++
 
     this.tweens.add({ targets: b.container, angle: 10, duration: 60, yoyo: true, repeat: 3 })
-    // やさしい誤答フィードバック（モード別。叱らない）
-    const seqLater = this.stageData.mode === 'sequence'
-      && this.currentSeq.slice(this.purifyStep + 1).includes(b.label)
-    if (seqLater) {
-      // 順番ちがい: 「さきに ね だよ」
-      this.showGentleFeedback(b.container.x, b.container.y, `さきに「${this.currentTarget}」だよ！`)
-      voice.speak(`さきに、${this.currentTarget}、だよ！`)
-    } else if (this.stageData.mode === 'math') {
-      this.showGentleFeedback(b.container.x, b.container.y, 'うーん、ちがうみたい！')
-      if (this.currentProblem) voice.speak(this.currentProblem.voicePrompt)
-    } else {
-      this.showGentleFeedback(b.container.x, b.container.y, `これは「${b.label}」だよ`)
-      voice.speak(`これは、${b.label}、だよ`)
-    }
-    // 狙いをもう一度伝える（忘れさせない）。
-    // フィードバック（これは、く、だよ ≈2秒）を言い終えてから＝途中で遮らない
-    this.time.delayedCall(2600, () => {
-      if (this.stepActive) this.speakPrompt()
-    })
 
     // 知識の誤りなので統計に記録（撃ち逃し・時間切れは記録しない。失敗になってもここまでの記録は残る）
     this.recordStat(false)
 
-    // ライフも同じ思想: 誤答ショットのときだけ減る
-    this.loseLife()
-    if (this.failed) return
+    // 流れ: モンスターの反撃（もやもや玉・かわいく短く）→ やさしいフィードバック → ライフ減
+    this.monsterAttack()
 
-    if (this.wrongThisStep === 2) {
-      const correct = this.bubbles.find(x => x.alive && x.label === this.currentTarget)
-      if (correct) {
-        correct.baseScale *= 1.25
-        correct.radius = 80 * correct.baseScale
-        this.tweens.add({ targets: correct.container, scale: correct.baseScale, duration: 350, ease: 'Back.easeOut' })
+    this.time.delayedCall(400, () => {
+      // やさしい誤答フィードバック（モード別。叱らない）
+      const seqLater = this.stageData.mode === 'sequence'
+        && this.currentSeq.slice(this.purifyStep + 1).includes(b.label)
+      if (seqLater) {
+        // 順番ちがい: 「さきに ね だよ」
+        this.showGentleFeedback(b.container.x, b.container.y, `さきに「${this.currentTarget}」だよ！`)
+        voice.speak(`さきに、${this.currentTarget}、だよ！`)
+      } else if (this.stageData.mode === 'math') {
+        this.showGentleFeedback(b.container.x, b.container.y, 'うーん、ちがうみたい！')
+        if (this.currentProblem) voice.speak(this.currentProblem.voicePrompt)
+      } else {
+        this.showGentleFeedback(b.container.x, b.container.y, `これは「${b.label}」だよ`)
+        voice.speak(`これは、${b.label}、だよ`)
       }
-    }
-    if (this.wrongTapStreak >= 3) {
-      this.wrongTapStreak = 0
-      this.glowCorrectBubble()
-    }
+    })
+    // 狙いをもう一度伝える（忘れさせない）。
+    // フィードバック（これは、く、だよ ≈2秒）を言い終えてから＝途中で遮らない
+    this.time.delayedCall(2900, () => {
+      if (this.stepActive) this.speakPrompt()
+    })
+
+    // ライフも同じ思想: 誤答ショットのときだけ減る（もや玉が届いたタイミングで）
+    this.time.delayedCall(650, () => {
+      this.loseLife()
+      if (this.failed) return
+
+      if (this.wrongThisStep === 2) {
+        const correct = this.bubbles.find(x => x.alive && x.label === this.currentTarget)
+        if (correct) {
+          correct.baseScale *= 1.25
+          correct.radius = 80 * correct.baseScale
+          this.tweens.add({ targets: correct.container, scale: correct.baseScale, duration: 350, ease: 'Back.easeOut' })
+        }
+      }
+      if (this.wrongTapStreak >= 3) {
+        this.wrongTapStreak = 0
+        this.glowCorrectBubble()
+      }
+    })
+  }
+
+  /**
+   * 誤答時のモンスターの反撃（非暴力・罰しない）:
+   * ぷくっと膨れて、もやもや玉をポンっと1つ投げてくる。手元が軽く押されるだけで
+   * 暗転・大きなショック演出はしない。撃ち逃し・時間切れでは呼ばれない。
+   */
+  private monsterAttack(): void {
+    const m = this.monster
+    if (!m) return
+    // ぷくっと膨れる
+    this.tweens.add({
+      targets: m, scaleX: m.scaleX * 1.1, scaleY: m.scaleY * 0.92,
+      duration: 130, yoyo: true, ease: 'Sine.easeInOut',
+    })
+    // もやもや玉（文字バブルより下の深度＝文字は隠さない）
+    const puff = this.add.image(m.x, m.y + 40, 'mist').setDepth(5850).setScale(0.4).setAlpha(0.95)
+    const tx = GAME_W / 2 + Phaser.Math.Between(-70, 70)
+    this.tweens.add({
+      targets: puff, x: tx, y: GAME_H - 140, scale: 1.05, duration: 430, ease: 'Sine.easeIn',
+      onComplete: () => {
+        // ふわっと弾けて消える＋両手が軽くもやに押される
+        this.tweens.add({ targets: puff, scale: 1.5, alpha: 0, duration: 220, onComplete: () => puff.destroy() })
+        this.tweens.add({ targets: this.handR, x: GAME_W - 158, duration: 90, yoyo: true })
+        this.tweens.add({ targets: this.handL, x: 158, duration: 90, yoyo: true })
+      },
+    })
   }
 
   // ------------------------------------------------------------------ ライフ

@@ -51,6 +51,8 @@ export default function App() {
   const [failInfo, setFailInfo] = useState<StageFailed | null>(null)
   const [confirmQuit, setConfirmQuit] = useState(false)
   const [playKey, setPlayKey] = useState(0)
+  /** このステージで新しくなかまが増えた（リザルトで控えめにバックアップを促す） */
+  const [capturedThisRun, setCapturedThisRun] = useState(false)
   /** ずかんを閉じたとき戻る画面（マップ or リザルト） */
   const [zukanFrom, setZukanFrom] = useState<Screen>('map')
 
@@ -79,12 +81,15 @@ export default function App() {
       setFailInfo(f)
       setScreen('failed')
     }
+    const onCaptured = () => setCapturedThisRun(true)
     EventBus.on('stage-clear', onClear)
     EventBus.on('stage-failed', onFailed)
+    EventBus.on('monster-captured', onCaptured)
     return () => {
       document.removeEventListener('pointerdown', unlockAudio)
       EventBus.off('stage-clear', onClear)
       EventBus.off('stage-failed', onFailed)
+      EventBus.off('monster-captured', onCaptured)
     }
   }, [])
 
@@ -100,6 +105,7 @@ export default function App() {
     setStage(s)
     setDifficulty(level)
     setConfirmQuit(false)
+    setCapturedThisRun(false)
     setPlayKey(k => k + 1)
     setScreen('game')
   }, [])
@@ -247,6 +253,11 @@ export default function App() {
           <button className="sub-button" onClick={() => openZukan('result')}>
             📖 ずかんをみる
           </button>
+          {capturedThisRun && (
+            <p className="backup-hint">
+              あたらしい なかまが ふえたよ！ ずかんを ほぞんしておくと あんしんだよ（ずかん → おうちのひと）
+            </p>
+          )}
           <button className="sub-button" onClick={() => { sfx.uiTap(); setScreen('map') }}>
             🗺️ ステージマップへ
           </button>

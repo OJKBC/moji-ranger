@@ -193,6 +193,8 @@ export interface PlayerProgress {
   /** 全ステージのベスト★合計 */
   totalStars: number
   playSessions: number
+  /** 最終保存日時（多重保存の新旧判定用。schemaVersion 4 以降で付与） */
+  savedAt?: number
 }
 
 /** ステージクリア時に Phaser → React へ渡す結果 */
