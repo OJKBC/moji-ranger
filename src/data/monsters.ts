@@ -20,13 +20,15 @@ export interface MonsterSpawnTable {
 }
 
 export const MONSTER_TABLE: MonsterSpawnTable = {
-  sampleSize: { weak: 5, strong: 5 }, // 総数が増えたので1プレイの顔ぶれも少し多めに
+  sampleSize: { weak: 6, strong: 5 }, // 道中はよわいのみになったので顔ぶれを少し増やす
+  // ㉝ 道中（ボス以外）は全難易度「よわい」のみ。つよいモンスターは最後のボス専用
+  //   （＝捕獲・図鑑対象）。将来ここを再編集すれば道中にもつよいを混ぜられる（データ調整可）。
   weights: {
-    1: { weak: 1, strong: 0 }, // 難易度1: よわいのみ
-    2: { weak: 0.7, strong: 0.3 }, // 難易度2: よわい中心＋ときどきつよい
-    3: { weak: 0.25, strong: 0.75 }, // 難易度3: つよい中心
-    4: { weak: 0.15, strong: 0.85 }, // 難易度4: ほぼつよい
-    5: { weak: 0.05, strong: 0.95 }, // 難易度5: つよいばかり
+    1: { weak: 1, strong: 0 },
+    2: { weak: 1, strong: 0 },
+    3: { weak: 1, strong: 0 },
+    4: { weak: 1, strong: 0 },
+    5: { weak: 1, strong: 0 },
   },
   purifySteps: { weak: [1, 2], strong: [2, 3] },
   bossWeights: { uncaptured: 1.0, captured: 0.2 },

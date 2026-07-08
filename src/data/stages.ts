@@ -39,7 +39,7 @@ export const STAGES: Stage[] = [
         'ま', 'み', 'む', 'め', 'も', 'や', 'ゆ', 'よ', 'ら', 'り',
         'る', 'れ', 'ろ', 'わ', 'を', 'ん',
       ],
-      poolStart: 8,
+      poolStart: 12, // ㉟ 1プレイで開く字を広げ、同じ字ばかりにならないように
     },
     rounds: 8,
     targetsPerRound: 5,
@@ -79,7 +79,7 @@ export const STAGES: Stage[] = [
         'マ', 'ミ', 'ム', 'メ', 'モ', 'ヤ', 'ユ', 'ヨ', 'ラ', 'リ',
         'ル', 'レ', 'ロ', 'ワ', 'ヲ', 'ン',
       ],
-      poolStart: 8,
+      poolStart: 12, // ㉟ 1プレイで開く字を広げ、同じ字ばかりにならないように
     },
     rounds: 8,
     targetsPerRound: 5,

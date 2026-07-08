@@ -103,6 +103,9 @@ export const SPELL_WORDS: Record<DifficultyLevel, SpellSpec[]> = {
     { word: 'fox', wrong: ['foks', 'fax', 'foxx', 'vox'] },
     { word: 'pen', wrong: ['pan', 'pin', 'penn', 'pn'] },
     { word: 'net', wrong: ['nat', 'nit', 'nett', 'met'] },
+    { word: 'bat', wrong: ['bet', 'bad', 'baht', 'vat'] },
+    { word: 'map', wrong: ['mep', 'nap', 'mapp', 'maf'] },
+    { word: 'bee', wrong: ['be', 'bea', 'bii', 'pee'] },
   ],
   2: [
     { word: 'fish', wrong: ['fsh', 'fich', 'fesh', 'fush'] },
@@ -121,6 +124,9 @@ export const SPELL_WORDS: Record<DifficultyLevel, SpellSpec[]> = {
     { word: 'moon', wrong: ['mun', 'moun', 'mone', 'moom'] },
     { word: 'ship', wrong: ['shp', 'shipp', 'sip', 'chip'] },
     { word: 'goat', wrong: ['gote', 'got', 'goet', 'goad'] },
+    { word: 'lion', wrong: ['lain', 'leon', 'lyon', 'loin'] },
+    { word: 'rain', wrong: ['ran', 'rane', 'rein', 'raen'] },
+    { word: 'kite', wrong: ['kit', 'kaite', 'cite', 'kyte'] },
   ],
   3: [
     { word: 'apple', wrong: ['appl', 'appel', 'aple', 'appol'] },
@@ -139,6 +145,9 @@ export const SPELL_WORDS: Record<DifficultyLevel, SpellSpec[]> = {
     { word: 'lemon', wrong: ['lemin', 'lemmon', 'limon', 'lemun'] },
     { word: 'grape', wrong: ['grap', 'graip', 'grabe', 'grepe'] },
     { word: 'bread', wrong: ['bred', 'braid', 'bredd', 'braed'] },
+    { word: 'robot', wrong: ['robat', 'robut', 'robbot', 'ropot'] },
+    { word: 'plane', wrong: ['plaen', 'plein', 'plan', 'playne'] },
+    { word: 'juice', wrong: ['juce', 'joos', 'juise', 'jooce'] },
   ],
   4: [
     { word: 'yellow', wrong: ['yelow', 'yello', 'jellow', 'yollow', 'yelloe'] },
@@ -153,6 +162,9 @@ export const SPELL_WORDS: Record<DifficultyLevel, SpellSpec[]> = {
     { word: 'window', wrong: ['windo', 'windou', 'winbow', 'wandow', 'windw'] },
     { word: 'basket', wrong: ['basikt', 'baskit', 'baskt', 'bascket', 'bosket'] },
     { word: 'rocket', wrong: ['roket', 'rockt', 'rockit', 'rokcet', 'rocet'] },
+    { word: 'cheese', wrong: ['chees', 'cheeze', 'chease', 'chesse', 'cheeese'] },
+    { word: 'dragon', wrong: ['dragn', 'dragun', 'draggon', 'dragen', 'draogn'] },
+    { word: 'guitar', wrong: ['gitar', 'guiter', 'guitor', 'gutar', 'guittar'] },
   ],
   5: [
     { word: 'rainbow', wrong: ['ranbow', 'rainbo', 'raimbow', 'rainbou', 'reinbow'] },
@@ -167,6 +179,9 @@ export const SPELL_WORDS: Record<DifficultyLevel, SpellSpec[]> = {
     { word: 'popcorn', wrong: ['popcon', 'popcrn', 'popkorn', 'popcorne', 'poppcorn'] },
     { word: 'octopus', wrong: ['octopos', 'octapus', 'octopuss', 'octpus', 'ocktopus'] },
     { word: 'pumpkin', wrong: ['pumkin', 'punpkin', 'pumpkn', 'pumpken', 'pumpkinn'] },
+    { word: 'unicorn', wrong: ['unicon', 'unecorn', 'unicron', 'unnicorn', 'unicorne'] },
+    { word: 'cricket', wrong: ['criket', 'crickt', 'crikcet', 'crickett', 'crikket'] },
+    { word: 'ketchup', wrong: ['kechup', 'ketchp', 'ketchap', 'kettchup', 'ketchupp'] },
   ],
 }
 
@@ -195,8 +210,13 @@ const MEAN_L1: MeaningSpec[] = [
   { word: 'apple', meaning: 'りんご', genre: 'fruit' },
   { word: 'banana', meaning: 'ばなな', genre: 'fruit' },
   { word: 'orange', meaning: 'みかん', genre: 'fruit' },
+  { word: 'bear', meaning: 'くま', genre: 'animal' },
+  { word: 'pig', meaning: 'ぶた', genre: 'animal' },
   { word: 'red', meaning: 'あか', genre: 'color' },
   { word: 'blue', meaning: 'あお', genre: 'color' },
+  { word: 'star', meaning: 'ほし', genre: 'nature' },
+  { word: 'moon', meaning: 'つき', genre: 'nature' },
+  { word: 'egg', meaning: 'たまご', genre: 'food' },
 ]
 const MEAN_L2: MeaningSpec[] = [
   { word: 'cat', meaning: 'ねこ', genre: 'animal' },

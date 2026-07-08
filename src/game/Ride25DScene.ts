@@ -7,6 +7,7 @@ import { MONSTER_FILES } from './monsterManifest'
 import { MONSTER_TABLE } from '../data/monsters'
 import { wordsForLevel } from '../data/words'
 import type { WordSpec } from '../data/words'
+import { iconForEnglishWord, iconForJaWord } from '../data/icons'
 import { ABC_CONFUSABLES, abcExample, abcLetters, MEANING_WORDS, meaningDistractors, SPELL_WORDS } from '../data/english'
 import type { MeaningSpec, SpellSpec } from '../data/english'
 import { MAX_CHOICES, tuningFor } from '../data/difficulty'
@@ -159,7 +160,7 @@ export class Ride25DScene extends Phaser.Scene {
   /** math: 直前に出した式（同じ式の連続を避ける） */
   private lastMathQuestion = ''
   /** abc: 「A for Apple」の例単語カード（㉚。聞き取り補助＝音が不明瞭でも区別できる） */
-  private abcHint: Phaser.GameObjects.Container | null = null
+  private questionIcon: Phaser.GameObjects.Container | null = null // ㊲ 出題中の補助アイコン（HUD内）
 
   // モンスターの抽選（グループ・浄化回数は data/monsters.ts のテーブルで決まる）
   private monsterKeys: { weak: string[]; strong: string[]; boss: string[] } = { weak: [], strong: [], boss: [] }
@@ -531,10 +532,30 @@ export class Ride25DScene extends Phaser.Scene {
     }
   }
 
-  /** モンスター画像の対峙時スケール（画像サイズに依存しないよう表示高さから逆算） */
+  /**
+   * モンスター画像の対峙時スケール（画像サイズに依存しないよう表示高さから逆算）。
+   * ㉞ ボスは道中のよわいより明確に大きく（迫力）。文字バブルは最前面(6000)・ボスは4000なので、
+   *    大きくしても文字は隠れない（文字最前面の原則を維持）。
+   */
   private monsterScaleFor(key: string, isBoss: boolean): number {
     const tex = this.textures.get(key).getSourceImage()
-    return (isBoss ? 430 : 305) / tex.height
+    return (isBoss ? 540 : 300) / tex.height
+  }
+
+  /**
+   * ㊳ 対峙中のアイドルモーション。静止した貼り付け画像に見えないよう、その場で
+   * わずかに動かす（ふわふわ上下＋ゆっくり呼吸＝軽い伸縮）。控えめで酔わない範囲。
+   * 文字バブルは最前面なので視認性には影響しない。道中もボスも同じ。
+   */
+  private addIdleMotion(m: Phaser.GameObjects.Image, baseY: number, baseScale: number): void {
+    this.tweens.add({
+      targets: m, y: baseY + 10, duration: 1900,
+      yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+    })
+    this.tweens.add({
+      targets: m, scaleX: baseScale * 0.985, scaleY: baseScale * 1.03, duration: 1300,
+      yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+    })
   }
 
   /** 次の敵を前方に出す（近づいてくるのが見える） */
@@ -592,8 +613,9 @@ export class Ride25DScene extends Phaser.Scene {
     this.bossActive = isBoss
     this.purifyStep = 0
 
-    // 近づいてきたビルボードを対峙位置へなめらかに引き継ぐ（参考画像に合わせて大きめ）
-    const targetY = isBoss ? 218 : 235
+    // 近づいてきたビルボードを対峙位置へなめらかに引き継ぐ（参考画像に合わせて大きめ）。
+    // ㉞ ボスは大きいので中心を少し下げて画面に収める（頭が切れないように）
+    const targetY = isBoss ? 250 : 235
     let m: Phaser.GameObjects.Image
     if (this.approach) {
       m = this.approach.sprite
@@ -619,15 +641,14 @@ export class Ride25DScene extends Phaser.Scene {
       this.purifyStepsNeeded = Phaser.Math.Between(min, max)
     }
     this.monster = m
+    // ㊵ ボスが大きく現れる瞬間に迫力の「ドーン」（カメラの見上げと同期）
+    if (isBoss) sfx.bossAppear()
     this.tweens.add({
       targets: m, x: GAME_W / 2, y: targetY, scale: targetScale,
       duration: 420, ease: 'Sine.easeOut',
       onComplete: () => {
         m.setTint(0xcfcfe0)
-        this.tweens.add({
-          targets: m, y: targetY + 10, duration: 1900,
-          yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
-        })
+        this.addIdleMotion(m, targetY, targetScale)
       },
     })
 
@@ -887,33 +908,29 @@ export class Ride25DScene extends Phaser.Scene {
   private announceAbc(letter: string): void {
     const ex = abcExample(letter)
     const spoke = voice.speakAbc(letter, ex.word)
-    this.showAbcHint(ex)
+    // ㊲ 例単語の「絵」だけを HUD（ライフの横）に出す。㉜ つづり・頭文字などの文字は出さない。
+    this.showQuestionIcon(ex.emoji)
     if (spoke) {
       this.tweens.add({ targets: this.missionBar, scale: 1.07, duration: 200, yoyo: true, repeat: 1 })
     }
   }
 
   /**
-   * ㉜ 例単語のヒントは「絵（絵文字）だけ」を上部中央に出す。
-   * 例単語のつづり・頭文字などの「文字」は画面に出さない（答え＝レターが見えてしまうため）。
-   * 絵が無い例単語のときは何も出さない（音声の「A for Apple」だけで出題する）。
+   * ㊲ 出題中の補助アイコン（絵）を、モンスターの顔と重ならないよう画面右上の HUD
+   * （ライフ表示の横）に出す。㉜ 答えにつながる「文字」は出さない＝絵だけ。
+   * 絵が無い出題のときは何も出さない（null）。出題が変わるたびに切り替える。
    */
-  private showAbcHint(ex: { word: string; emoji: string }): void {
-    this.clearAbcHint()
-    if (!ex.emoji) return
-    const emoji = this.add.text(0, 0, ex.emoji, { fontSize: '54px' }).setOrigin(0.5)
-    const w = emoji.width
-    const bg = this.add.graphics()
-    bg.fillStyle(0x241a4a, 0.85)
-    bg.fillRoundedRect(-w / 2 - 24, -42, w + 48, 84, 26)
-    bg.lineStyle(3, 0xffd94d, 0.9)
-    bg.strokeRoundedRect(-w / 2 - 24, -42, w + 48, 84, 26)
-    this.abcHint = this.add.container(GAME_W / 2, 84, [bg, emoji]).setDepth(8100).setScale(0)
-    this.tweens.add({ targets: this.abcHint, scale: 1, duration: 260, ease: 'Back.easeOut' })
+  private showQuestionIcon(emoji: string | null): void {
+    this.clearQuestionIcon()
+    if (!emoji) return
+    const backing = this.add.circle(0, 0, 30, 0x241a4a, 0.82).setStrokeStyle(3, 0xffd94d, 0.9)
+    const icon = this.add.text(0, 0, emoji, { fontSize: '40px' }).setOrigin(0.5)
+    this.questionIcon = this.add.container(GAME_W - 210, 54, [backing, icon]).setDepth(8050).setScale(0)
+    this.tweens.add({ targets: this.questionIcon, scale: 1, duration: 240, ease: 'Back.easeOut' })
   }
 
-  private clearAbcHint(): void {
-    if (this.abcHint) { this.abcHint.destroy(); this.abcHint = null }
+  private clearQuestionIcon(): void {
+    if (this.questionIcon) { this.questionIcon.destroy(); this.questionIcon = null }
   }
 
   /** ② words: 単語を読み上げ、正しいスペルのバブルを選ぶ（誤答スペルはデータで用意） */
@@ -937,6 +954,8 @@ export class Ride25DScene extends Phaser.Scene {
     const wrongs = Phaser.Utils.Array.Shuffle([...spec.wrong]).slice(0, choiceCount - 1)
     const labels = Phaser.Utils.Array.Shuffle([spec.word, ...wrongs])
     this.announceEnglish(spec.word)
+    // ㊱ 単語に対応する「絵」があれば HUD に出す（絵だけ。答えのスペル文字は出さない＝㉜）。
+    this.showQuestionIcon(iconForEnglishWord(spec.word))
     this.time.delayedCall(this.tune.fastPrompt ? 340 : 420, () => {
       this.spawnBubbleArc(labels)
       recordSeen(spec.word, 'english')
@@ -1037,8 +1056,31 @@ export class Ride25DScene extends Phaser.Scene {
     this.tweens.add({ targets: this.missionBar, scale: 1.07, duration: 200, yoyo: true, repeat: 1 })
   }
 
+  /**
+   * ㊶ 正解演出で、その言葉に対応する「絵」があれば下側に出す（正解後なので㉜と矛盾しない）。
+   * 無ければ何も出さない。次の出題のバブルと重ならないよう短く消す。
+   */
+  private popCelebrationIcon(emoji: string | null): void {
+    if (!emoji) return
+    const icon = this.add.text(GAME_W / 2, 566, emoji, { fontSize: '82px' })
+      .setOrigin(0.5).setDepth(8500).setScale(0)
+    this.tweens.add({ targets: icon, scale: 1, duration: 280, ease: 'Back.easeOut' })
+    this.tweens.add({ targets: icon, y: 542, duration: 320, yoyo: true, repeat: 1, ease: 'Sine.easeOut' })
+    this.tweens.add({
+      targets: icon, alpha: 0, duration: 260, delay: 780, ease: 'Cubic.easeIn',
+      onComplete: () => icon.destroy(),
+    })
+  }
+
   /** 英語正解時の演出: 大きく表示＋英語で読み上げ（meaning は「英語→意味」の順で読む） */
   private showEnglishReward(label: string, enWord: string): void {
+    // ㊶ 正解した語の絵（abc=例単語 / spell=単語 / meaning=意味）があれば出す
+    const icon = this.stageData.enMode === 'letter'
+      ? abcExample(label).emoji
+      : this.stageData.enMode === 'spell'
+        ? iconForEnglishWord(label)
+        : iconForJaWord(label) ?? iconForEnglishWord(enWord)
+    this.popCelebrationIcon(icon)
     const size = label.length >= 5 ? '96px' : label.length >= 4 ? '112px' : label.length >= 2 ? '130px' : '150px'
     const glow = this.add.image(GAME_W / 2, 455, 'softglow')
       .setDepth(8490).setScale(2.2).setAlpha(0.85).setTint(0xfff2c0)
@@ -1175,7 +1217,7 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   private clearBubbles(): void {
-    this.clearAbcHint()
+    this.clearQuestionIcon()
     for (const b of this.bubbles) {
       b.alive = false
       this.tweens.add({
@@ -1926,6 +1968,9 @@ export class Ride25DScene extends Phaser.Scene {
     sfx.shoot()
 
     if (!best) {
+      // ㊴ 選択肢以外への命中は、判定・ライフ・浄化メーターに一切影響しない（自由に撃って遊べる）。
+      //    背景/モンスターが軽く揺れるだけの遊び演出。
+      this.freeShotReact(ix, iy)
       this.fizzle(ix, iy)
       return
     }
@@ -2007,6 +2052,35 @@ export class Ride25DScene extends Phaser.Scene {
     }).setDepth(7600)
     emitter.explode(6, x, y)
     this.time.delayedCall(400, () => emitter.destroy())
+  }
+
+  /**
+   * ㊴ 選択肢以外へのビーム命中の反応（判定・ライフ・浄化には一切不干渉）。
+   * モンスターに当たれば軽く揺れ、背景に当たればその箇所が波打つ。効果音は fizzle を流用。
+   */
+  private freeShotReact(x: number, y: number): void {
+    const m = this.monster
+    if (m && m.active && this.phase === 'encounter') {
+      if (Phaser.Geom.Rectangle.Contains(m.getBounds(), x, y)) { this.shakeMonster(m); return }
+    }
+    this.shakeBackground(x, y)
+  }
+
+  /** モンスターがぷるっと軽く揺れる（怖くない・短い） */
+  private shakeMonster(m: Phaser.GameObjects.Image): void {
+    this.tweens.add({
+      targets: m, angle: 5, duration: 55, yoyo: true, repeat: 3, ease: 'Sine.easeInOut',
+      onComplete: () => { if (m.active) m.angle = 0 },
+    })
+  }
+
+  /** 背景のその箇所がぷるっと波打つ（前景=文字/バブル/モンスターより下の深度なので前景は揺らさない） */
+  private shakeBackground(x: number, y: number): void {
+    const ripple = this.add.image(x, y, 'ring').setDepth(60).setTint(0x9fd0ff).setScale(0.4).setAlpha(0.55)
+    this.tweens.add({
+      targets: ripple, scale: 2.2, alpha: 0, duration: 320, ease: 'Cubic.easeOut',
+      onComplete: () => ripple.destroy(),
+    })
   }
 
   private hitJuiceAt(x: number, y: number, tint: number): void {
@@ -2106,6 +2180,8 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   private showBigLetter(label: string): void {
+    // ㊶ 単語（ことば）に対応する絵があれば出す。単文字（ひらがな/数字）はふつう絵が無い→出さない
+    this.popCelebrationIcon(iconForJaWord(label))
     // モンスターが隠れないよう、画面下側（バブルは消えたあと）に出す
     const glow = this.add.image(GAME_W / 2, 455, 'softglow')
       .setDepth(8490).setScale(2.2).setAlpha(0.85).setTint(0xfff2c0)
@@ -2192,6 +2268,11 @@ export class Ride25DScene extends Phaser.Scene {
         boss: this.bossActive,
         purifyStep: this.purifyStep,
         target: this.currentTarget,
+        group: this.approachGroup,
+        monsterKey: this.lastMonsterKey,
+        lives: this.lives,
+        wrongTotal: this.wrongTotal,
+        hasQuestionIcon: !!this.questionIcon,
       }
       w.__debugTargets = this.bubbles
         .filter(b => b.alive)

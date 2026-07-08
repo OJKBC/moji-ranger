@@ -29,11 +29,14 @@ export interface DifficultyTuning {
 export const MAX_CHOICES = 6
 
 export const DIFFICULTY: Record<DifficultyLevel, DifficultyTuning> = {
+  // ㉟ poolBonus を引き上げ、1プレイ内で開く文字を広げる（同じ字ばかりの繰り返しを減らす）。
+  //    poolStart(=12) との合計で「そのプレイで出うる字数」が決まる（46で頭打ち）:
+  //    L1=12 / L2=18 / L3=24 / L4=34 / L5=46。
   1: { choiceBonus: 0, poolBonus: 0, speedMul: 1.0, useConfusables: false, maxConfusables: 0, fastPrompt: false, mathChoices: 3 },
-  2: { choiceBonus: 0, poolBonus: 3, speedMul: 1.0, useConfusables: true, maxConfusables: 2, fastPrompt: false, mathChoices: 3 },
-  3: { choiceBonus: 1, poolBonus: 5, speedMul: 1.15, useConfusables: true, maxConfusables: 2, fastPrompt: true, mathChoices: 3 },
-  4: { choiceBonus: 2, poolBonus: 9, speedMul: 1.22, useConfusables: true, maxConfusables: 3, fastPrompt: true, mathChoices: 4 },
-  5: { choiceBonus: 3, poolBonus: 14, speedMul: 1.30, useConfusables: true, maxConfusables: 3, fastPrompt: true, mathChoices: 4 },
+  2: { choiceBonus: 0, poolBonus: 6, speedMul: 1.0, useConfusables: true, maxConfusables: 2, fastPrompt: false, mathChoices: 3 },
+  3: { choiceBonus: 1, poolBonus: 12, speedMul: 1.15, useConfusables: true, maxConfusables: 2, fastPrompt: true, mathChoices: 3 },
+  4: { choiceBonus: 2, poolBonus: 22, speedMul: 1.22, useConfusables: true, maxConfusables: 3, fastPrompt: true, mathChoices: 4 },
+  5: { choiceBonus: 3, poolBonus: 34, speedMul: 1.30, useConfusables: true, maxConfusables: 3, fastPrompt: true, mathChoices: 4 },
 }
 
 export function tuningFor(level: DifficultyLevel): DifficultyTuning {
