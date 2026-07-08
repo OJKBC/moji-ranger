@@ -21,20 +21,21 @@ fs.mkdirSync(DST, { recursive: true })
 
 // ---- トークン一覧（voice.speak のテキストを 、。！？とスペースで区切ったもの）----
 
-// ひらがな・カタカナ清音46（ステージの letterPool 全域をカバー）
+// ひらがな・カタカナ（清音46＋濁音＋半濁音＋小さい文字）は src/data/kana.ts から取り込む。
+// kana.ts に文字を足せば、ステージのプールも選択肢もここのクリップも自動で追う（全カバー維持）。
+const readFileEarly = rel => fs.readFileSync(path.join(root, '..', rel), 'utf8')
+const kanaSrc = readFileEarly('src/data/kana.ts')
+const kanaArr = name => {
+  const m = kanaSrc.match(new RegExp(`${name}\\s*=\\s*\\[([^\\]]*)\\]`))
+  return m ? [...m[1].matchAll(/'([^']+)'/g)].map(x => x[1]) : []
+}
 const HIRA = [
-  'あ', 'い', 'う', 'え', 'お', 'か', 'き', 'く', 'け', 'こ',
-  'さ', 'し', 'す', 'せ', 'そ', 'た', 'ち', 'つ', 'て', 'と',
-  'な', 'に', 'ぬ', 'ね', 'の', 'は', 'ひ', 'ふ', 'へ', 'ほ',
-  'ま', 'み', 'む', 'め', 'も', 'や', 'ゆ', 'よ', 'ら', 'り',
-  'る', 'れ', 'ろ', 'わ', 'を', 'ん',
+  ...kanaArr('HIRAGANA_SEION'), ...kanaArr('HIRAGANA_DAKUTEN'),
+  ...kanaArr('HIRAGANA_HANDAKUTEN'), ...kanaArr('HIRAGANA_SMALL'),
 ]
 const KATA = [
-  'ア', 'イ', 'ウ', 'エ', 'オ', 'カ', 'キ', 'ク', 'ケ', 'コ',
-  'サ', 'シ', 'ス', 'セ', 'ソ', 'タ', 'チ', 'ツ', 'テ', 'ト',
-  'ナ', 'ニ', 'ヌ', 'ネ', 'ノ', 'ハ', 'ヒ', 'フ', 'ヘ', 'ホ',
-  'マ', 'ミ', 'ム', 'メ', 'モ', 'ヤ', 'ユ', 'ヨ', 'ラ', 'リ',
-  'ル', 'レ', 'ロ', 'ワ', 'ヲ', 'ン',
+  ...kanaArr('KATAKANA_SEION'), ...kanaArr('KATAKANA_DAKUTEN'),
+  ...kanaArr('KATAKANA_HANDAKUTEN'), ...kanaArr('KATAKANA_SMALL'),
 ]
 /** 数字の読み（さんすう用。に・ご も含める＝清音46には濁音のごが無いため明示）。
  *  11〜18 は「じゅう＋一の位」をスペース連結で読むので、単体クリップはこの10個で足りる。 */

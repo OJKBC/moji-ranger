@@ -29,14 +29,16 @@ export interface DifficultyTuning {
 export const MAX_CHOICES = 6
 
 export const DIFFICULTY: Record<DifficultyLevel, DifficultyTuning> = {
-  // ㉟ poolBonus を引き上げ、1プレイ内で開く文字を広げる（同じ字ばかりの繰り返しを減らす）。
-  //    poolStart(=12) との合計で「そのプレイで出うる字数」が決まる（46で頭打ち）:
-  //    L1=12 / L2=18 / L3=24 / L4=34 / L5=46。
+  // poolBonus は poolStart(=12) との合計で「そのプレイで出うる字数」を決める。
+  // かなプールは清音46→濁音20→半濁音5→小さい文字9/10 の順（src/data/kana.ts）。全カバー設計:
+  //   L1=12 / L2=18 / L3=46（清音46を全部）/ L4=71（＋濁音＋半濁音）/ L5=82（＋小さい文字・長音, 上限で頭打ち）。
+  // ※ 実際にはさらに習得（correct2回以上）で picker が上限まで広げる。字数=語彙の広さで、
+  //   1問の難しさ（選択肢数・紛らわしさ）は choiceBonus/maxConfusables 側で決まる。
   1: { choiceBonus: 0, poolBonus: 0, speedMul: 1.0, useConfusables: false, maxConfusables: 0, fastPrompt: false, mathChoices: 3 },
   2: { choiceBonus: 0, poolBonus: 6, speedMul: 1.0, useConfusables: true, maxConfusables: 2, fastPrompt: false, mathChoices: 3 },
-  3: { choiceBonus: 1, poolBonus: 12, speedMul: 1.15, useConfusables: true, maxConfusables: 2, fastPrompt: true, mathChoices: 3 },
-  4: { choiceBonus: 2, poolBonus: 22, speedMul: 1.22, useConfusables: true, maxConfusables: 3, fastPrompt: true, mathChoices: 4 },
-  5: { choiceBonus: 3, poolBonus: 34, speedMul: 1.30, useConfusables: true, maxConfusables: 3, fastPrompt: true, mathChoices: 4 },
+  3: { choiceBonus: 1, poolBonus: 34, speedMul: 1.15, useConfusables: true, maxConfusables: 2, fastPrompt: true, mathChoices: 3 },
+  4: { choiceBonus: 2, poolBonus: 59, speedMul: 1.22, useConfusables: true, maxConfusables: 3, fastPrompt: true, mathChoices: 4 },
+  5: { choiceBonus: 3, poolBonus: 70, speedMul: 1.30, useConfusables: true, maxConfusables: 3, fastPrompt: true, mathChoices: 4 },
 }
 
 export function tuningFor(level: DifficultyLevel): DifficultyTuning {

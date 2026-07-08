@@ -17,6 +17,7 @@ import type { BallSpec } from '../data/balls'
 import { monsterName } from '../data/monsterNames'
 import { pickDistractors } from '../learning/distractors'
 import { pickNextLetter, pickTargetLetter } from '../learning/picker'
+import { HIRAGANA_POOL, KATAKANA_POOL } from '../data/kana'
 import {
   captureFailCount, getBuddy, isCaptured, loadProgress,
   recordAnswer, recordCaptureFail, recordCaptureSuccess, recordSeen, recordStageClear,
@@ -326,6 +327,22 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   create(): void {
+    if (import.meta.env.DEV) {
+      // 出題ピッカーの全カバー/偏り検証用フック（本番ビルドには含まれない）。
+      // 実際の pickTargetLetter を n 回まわし、狙った文字の並びを返す。
+      const w = window as unknown as Record<string, unknown>
+      w.__probePicker = (kind: TargetKind, poolStart: number, n: number) => {
+        const pool = kind === 'katakana' ? KATAKANA_POOL : HIRAGANA_POOL
+        const recent: string[] = []
+        const out: string[] = []
+        for (let i = 0; i < n; i++) {
+          const t = pickTargetLetter(pool, poolStart, kind, recent)
+          recent.push(t)
+          out.push(t)
+        }
+        return out
+      }
+    }
     // battle 未定義の 2.5d ステージにも安全なデフォルトを与える
     const base = this.stageData.battle ?? {
       enemyCount: 3,

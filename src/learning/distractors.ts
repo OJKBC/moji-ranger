@@ -5,6 +5,10 @@
  */
 import { loadProgress } from '../store/progress'
 import type { TargetKind } from '../types'
+import {
+  HIRAGANA_DAKUTEN, HIRAGANA_HANDAKUTEN, HIRAGANA_SMALL,
+  KATAKANA_DAKUTEN, KATAKANA_HANDAKUTEN, KATAKANA_SMALL, KANA_BASE_OF,
+} from '../data/kana'
 
 /** 形が似ていて混同しやすい文字のマップ（ひらがな） */
 export const CONFUSABLES: Record<string, string[]> = {
@@ -23,7 +27,8 @@ export const CONFUSABLES: Record<string, string[]> = {
   'う': ['つ', 'ら'],
   'つ': ['う', 'し'],
   'し': ['つ', 'も'],
-  'こ': ['い', 'に'],
+  'こ': ['い', 'に', 'て'],
+  'て': ['こ', 'そ'],
   'ん': ['そ', 'ろ'],
   'は': ['ほ', 'ま'],
   'ほ': ['は', 'ま'],
@@ -38,6 +43,7 @@ export const KATAKANA_CONFUSABLES: Record<string, string[]> = {
   'ツ': ['シ', 'ソ', 'ン'],
   'ソ': ['ン', 'ツ', 'リ'],
   'ン': ['ソ', 'シ', 'リ'],
+  'ノ': ['ソ', 'ン', 'メ'],
   'ク': ['ワ', 'タ', 'ケ'],
   'ワ': ['ク', 'フ', 'ウ'],
   'タ': ['ク', 'ナ', 'メ'],
@@ -52,6 +58,22 @@ export const KATAKANA_CONFUSABLES: Record<string, string[]> = {
   'ユ': ['コ', 'ヨ'],
   'ロ': ['コ', 'ル'],
   'イ': ['ト', 'リ'],
+}
+
+/**
+ * 濁音・半濁音・小さい文字（難易度4〜5で出題）は、元の字（清音／大きい字）と形が紛らわしい。
+ * その字が「ターゲット」のときだけ、選択肢に元の字を必ず混ぜて識別練習にする
+ * （が↔か＝濁点の有無、ゃ↔や＝大小、ぱ↔は＝半濁点）。
+ * ※ キーは濁音等の側だけ。清音側（か 等）には濁音を足さない＝低難易度で未習の濁音が
+ *   選択肢に出ないようにするため。BASE_POOL も清音のまま（下）。
+ */
+for (const ch of [...HIRAGANA_DAKUTEN, ...HIRAGANA_HANDAKUTEN, ...HIRAGANA_SMALL]) {
+  const base = KANA_BASE_OF[ch]
+  if (base) CONFUSABLES[ch] = [base, ...(CONFUSABLES[ch] ?? [])]
+}
+for (const ch of [...KATAKANA_DAKUTEN, ...KATAKANA_HANDAKUTEN, ...KATAKANA_SMALL]) {
+  const base = KANA_BASE_OF[ch]
+  if (base) KATAKANA_CONFUSABLES[ch] = [base, ...(KATAKANA_CONFUSABLES[ch] ?? [])]
 }
 
 /**
