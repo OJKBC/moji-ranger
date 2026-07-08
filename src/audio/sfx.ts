@@ -12,7 +12,6 @@ class SfxPlayer {
   private noiseBuffer: AudioBuffer | null = null
   /** 同種音の直近再生時刻（連打でうるさくならないよう間引く） */
   private lastPlayAt: Record<string, number> = {}
-  private unmuteDone = false
   enabled = true
 
   /** 同じ種類の音が minGapMs 以内に鳴っていたら true（=スキップする） */
@@ -38,21 +37,8 @@ class SfxPlayer {
       for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume()
-    // iOS はサイレントスイッチON だと WebAudio が消音される（TTS は鳴るので
-    // 「効果音だけ出ない」ように見える）。無音の <audio> を一度再生して
-    // オーディオセッションを「再生」扱いに昇格させる定番の回避策
-    if (!this.unmuteDone) {
-      this.unmuteDone = true
-      try {
-        const el = new Audio(
-          'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA',
-        )
-        el.volume = 0.01
-        void el.play().catch(() => {})
-      } catch {
-        // 失敗しても効果音の再生自体は試みる
-      }
-    }
+    // 注意: 以前ここにあった「無音 <audio> 再生でサイレントスイッチを回避する」ハックは、
+    // オーディオセッションを切り替えて TTS（出題の声）を消してしまう副作用があったため撤去した。
   }
 
   /**

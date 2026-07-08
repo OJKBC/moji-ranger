@@ -50,7 +50,13 @@ class VoicePlayer {
   speak(text: string, opts?: { rate?: number; pitch?: number }): boolean {
     if (!this.supported || !this.enabled) return false
     try {
-      window.speechSynthesis.cancel()
+      // iOS/Chrome は他の音声再生やタブ切替のあと synth が paused のまま固まり、
+      // speak しても無音になることがある。毎回 resume で確実に起こす
+      window.speechSynthesis.resume()
+      // cancel は必要なときだけ（Chrome は cancel 直後の speak を落とすことがある）
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+        window.speechSynthesis.cancel()
+      }
       const utter = new SpeechSynthesisUtterance(text)
       utter.lang = 'ja-JP'
       if (this.jaVoice) utter.voice = this.jaVoice
