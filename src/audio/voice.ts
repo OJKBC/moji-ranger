@@ -13,10 +13,12 @@
  */
 import { sfx } from './sfx'
 import { VOICE_CLIPS } from './voiceManifest'
+import { EN_VOICE_CLIPS } from './voiceManifestEn'
 
 class VoicePlayer {
   readonly supported = typeof window !== 'undefined' && 'speechSynthesis' in window
   private jaVoice: SpeechSynthesisVoice | null = null
+  private enVoice: SpeechSynthesisVoice | null = null
   private initialized = false
   private warmed = false
   /** デコード済みクリップ（前後の無音をトリムした再生区間つき） */
@@ -44,7 +46,7 @@ class VoicePlayer {
   private warm(): void {
     if (this.warmed) return
     this.warmed = true
-    for (const file of Object.values(VOICE_CLIPS)) {
+    for (const file of [...Object.values(VOICE_CLIPS), ...Object.values(EN_VOICE_CLIPS)]) {
       void fetch(`${import.meta.env.BASE_URL}assets/voice/${file}`).catch(() => undefined)
     }
   }
@@ -56,6 +58,11 @@ class VoicePlayer {
       voices.find(v => v.lang === 'ja-JP' && v.localService) ??
       voices.find(v => v.lang === 'ja-JP') ??
       voices.find(v => v.lang.startsWith('ja')) ??
+      null
+    this.enVoice =
+      voices.find(v => v.lang === 'en-US' && v.localService) ??
+      voices.find(v => v.lang === 'en-US') ??
+      voices.find(v => v.lang.startsWith('en')) ??
       null
   }
 
@@ -115,6 +122,29 @@ class VoicePlayer {
     return this.speakTts(text, opts)
   }
 
+  /**
+   * 英語（en-US）を読み上げる。単一トークン（アルファベット1文字 or 単語）想定。
+   * 事前生成した英語クリップがあればそれを再生し、無ければ Web Speech(en-US) に
+   * フォールバックする。どちらも使えなければ false を返す（呼び出し側で大きな表示に切り替える）。
+   * TODO: 将来 録音した英語音声を EN_VOICE_CLIPS に差し替えれば、このまま反映される。
+   * @returns 音が出せるか（false のときは視覚フォールバックを出す）
+   */
+  speakEn(text: string): boolean {
+    if (!this.enabled) return false
+    const key = text.trim().toLowerCase()
+    const graph = sfx.getGraph()
+    const file = EN_VOICE_CLIPS[key]
+    if (graph && file) {
+      void this.playClips(graph.ctx, graph.out, [file])
+      return true
+    }
+    // フォールバック: en-US の音声合成（端末に英語音声があるとき）
+    if (this.supported && this.enVoice) {
+      return this.speakTts(text, { lang: 'en-US', rate: 0.8, pitch: 1.1 })
+    }
+    return false
+  }
+
   private async playClips(ctx: AudioContext, out: AudioNode, files: string[]): Promise<void> {
     const session = ++this.playSession
     this.stopClips()
@@ -144,9 +174,12 @@ class VoicePlayer {
     this.playing = []
   }
 
-  /** フォールバック: Web Speech API（クリップに無い文章用） */
-  private speakTts(text: string, opts?: { rate?: number; pitch?: number }): boolean {
+  /** フォールバック: Web Speech API（クリップに無い文章用。lang で日本語/英語を切替） */
+  private speakTts(text: string, opts?: { rate?: number; pitch?: number; lang?: string }): boolean {
     if (!this.supported) return false
+    const isEn = opts?.lang?.startsWith('en') ?? false
+    const preferred = isEn ? this.enVoice : this.jaVoice
+    if (isEn && !preferred) return false // 英語音声が無ければ鳴らさない（視覚フォールバックに任せる）
     try {
       // タブ切替等で synth が paused のまま固まることがあるため毎回起こす
       window.speechSynthesis.resume()
@@ -154,8 +187,8 @@ class VoicePlayer {
         window.speechSynthesis.cancel()
       }
       const utter = new SpeechSynthesisUtterance(text)
-      utter.lang = 'ja-JP'
-      if (this.jaVoice) utter.voice = this.jaVoice
+      utter.lang = opts?.lang ?? 'ja-JP'
+      if (preferred) utter.voice = preferred
       utter.rate = opts?.rate ?? 0.85
       utter.pitch = opts?.pitch ?? 1.15
       utter.volume = 1

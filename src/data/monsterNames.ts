@@ -103,13 +103,97 @@ export const MONSTER_NAMES: Record<string, string> = {
   'monster-strong-62': 'ゆめうま',
   'monster-strong-63': 'がひめ',
   'monster-strong-64': 'もみじしか',
+  // --- 2026-07-08 追加分その3（つよい・65〜105） ---
+  'monster-strong-65': 'やりりゅう',
+  'monster-strong-66': 'かげのじゅう',
+  'monster-strong-67': 'かげまじん',
+  'monster-strong-68': 'すいしょうまる',
+  'monster-strong-69': 'つきのおう',
+  'monster-strong-70': 'だいじゃおう',
+  'monster-strong-71': 'はねじし',
+  'monster-strong-72': 'にじほうおう',
+  'monster-strong-73': 'あかりゅうき',
+  'monster-strong-74': 'がまにんじゃ',
+  'monster-strong-75': 'とりのぶし',
+  'monster-strong-76': 'うぱまどう',
+  'monster-strong-77': 'おんぷどり',
+  'monster-strong-78': 'みずうま',
+  'monster-strong-79': 'ちょうのせい',
+  'monster-strong-80': 'まかいどうし',
+  'monster-strong-81': 'はさみどり',
+  'monster-strong-82': 'からくりどけい',
+  'monster-strong-83': 'ちゃがまじん',
+  'monster-strong-84': 'からかさおばけ',
+  'monster-strong-85': 'ちょうちんおう',
+  'monster-strong-86': 'たこよろい',
+  'monster-strong-87': 'かめらおう',
+  'monster-strong-88': 'こうてつへい',
+  'monster-strong-89': 'むらさきおう',
+  'monster-strong-90': 'かえんき',
+  'monster-strong-91': 'はくまどう',
+  'monster-strong-92': 'せきりゅうき',
+  'monster-strong-93': 'がんせきおう',
+  'monster-strong-94': 'こうてんし',
+  'monster-strong-95': 'もりのまい',
+  'monster-strong-96': 'しおまじん',
+  'monster-strong-97': 'こけまじゅう',
+  'monster-strong-98': 'もりおに',
+  'monster-strong-99': 'べにむしゃ',
+  'monster-strong-100': 'ひのめがみ',
+  'monster-strong-101': 'つるおどり',
+  'monster-strong-102': 'みなもりゅう',
+  'monster-strong-103': 'みどりごろう',
+  'monster-strong-104': 'あかおにおう',
+  'monster-strong-105': 'かえんひめ',
+  // --- 2026-07-08 追加分（よわい・31〜51。道中の敵のみ＝図鑑・なかま対象外。名前は予備） ---
+  'monster-weak-31': 'ろうそくん',
+  'monster-weak-32': 'つぎはぎわん',
+  'monster-weak-33': 'ぽっとん',
+  'monster-weak-34': 'りんりんまる',
+  'monster-weak-35': 'ふわりん',
+  'monster-weak-36': 'どうけごぶ',
+  'monster-weak-37': 'まくらん',
+  'monster-weak-38': 'ちょうちんこ',
+  'monster-weak-39': 'こうもりん',
+  'monster-weak-40': 'たまごん',
+  'monster-weak-41': 'ぼくさーがえる',
+  'monster-weak-42': 'ぶーつん',
+  'monster-weak-43': 'かねあたま',
+  'monster-weak-44': 'とげじゅう',
+  'monster-weak-45': 'ぼろまんと',
+  'monster-weak-46': 'もじゃまる',
+  'monster-weak-47': 'いんくん',
+  'monster-weak-48': 'すすまる',
+  'monster-weak-49': 'ぐるぐるみいら',
+  'monster-weak-50': 'たるくち',
+  'monster-weak-51': 'おめんじゅう',
 }
 
-/** モンスターIDの一覧（ずかんの並び順: よわい→つよい） */
-export const ALL_MONSTER_IDS: string[] = [
-  ...MONSTER_FILES.weak.map(f => f.replace(/\.png$/, '')),
-  ...MONSTER_FILES.strong.map(f => f.replace(/\.png$/, '')),
-]
+const stripExt = (f: string) => f.replace(/\.png$/, '')
+
+/**
+ * つよいモンスターのID一覧。
+ * つよい＝ボスになる＝なかまボールの対象＝ずかんに載る「capturable」なグループ。
+ * （よわいは道中の敵のみで、捕獲も図鑑掲載もしない）
+ */
+export const STRONG_MONSTER_IDS: string[] = MONSTER_FILES.strong.map(stripExt)
+
+/** よわいモンスターのID一覧（道中の敵のみ。捕獲・図鑑対象外） */
+export const WEAK_MONSTER_IDS: string[] = MONSTER_FILES.weak.map(stripExt)
+
+/**
+ * なかまボール・図鑑の対象になるモンスター（＝つよい）。
+ * データ（グループ）で切り替わるので、仕様変更はこの1行で済む。
+ */
+export const CAPTURABLE_MONSTER_IDS: string[] = STRONG_MONSTER_IDS
+
+/** そのモンスターが捕獲・図鑑の対象か（つよい＝true / よわい＝false） */
+export function isCapturable(id: string): boolean {
+  return STRONG_MONSTER_IDS.includes(id)
+}
+
+/** モンスターIDの一覧（よわい→つよい。名前フォールバックの通し番号にのみ使用） */
+export const ALL_MONSTER_IDS: string[] = [...WEAK_MONSTER_IDS, ...STRONG_MONSTER_IDS]
 
 /** 名前を返す（未定義なら「もやもやNごう」の仮名） */
 export function monsterName(id: string): string {

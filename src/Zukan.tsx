@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { ALL_MONSTER_IDS, monsterImageUrl, monsterName } from './data/monsterNames'
+import { CAPTURABLE_MONSTER_IDS, monsterImageUrl, monsterName } from './data/monsterNames'
 import { exportSave, importSave, loadProgress } from './store/progress'
 import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
@@ -27,6 +27,8 @@ const fromCode = (code: string) => new TextDecoder().decode(Uint8Array.from(atob
 export function Zukan({ onBack }: Props) {
   const progress = loadProgress()
   const captured = new Set(progress.capturedMonsters)
+  // 図鑑に載るのは「つよい（capturable）」だけ。総数・カウントもつよい基準
+  const capturedCount = CAPTURABLE_MONSTER_IDS.filter(id => captured.has(id)).length
   const [selected, setSelected] = useState<string | null>(null)
 
   // 保護者メニュー（親ゲート: 大人向けの計算問題を解くと開く）
@@ -119,11 +121,11 @@ export function Zukan({ onBack }: Props) {
         {/* 収集カウント: 数字＋ボールで読めない子にも伝わる */}
         <div className="map-total zukan-count">
           <img src={`${import.meta.env.BASE_URL}assets/balls/ball-red.png`} alt="" />
-          {captured.size} / {ALL_MONSTER_IDS.length}
+          {capturedCount} / {CAPTURABLE_MONSTER_IDS.length}
         </div>
       </div>
       <div className="map-grid zukan-grid">
-        {ALL_MONSTER_IDS.map(id => {
+        {CAPTURABLE_MONSTER_IDS.map(id => {
           const got = captured.has(id)
           return got ? (
             <button key={id} className="zukan-card" onClick={() => open(id)}>

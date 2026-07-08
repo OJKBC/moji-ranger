@@ -2,7 +2,7 @@ import { idbReadNewest, idbWrite } from './persistence'
 import type { DifficultyLevel, LetterStats, PlayerProgress, Stage, TargetKind } from '../types'
 
 const STORAGE_KEY = 'moji-ranger-progress'
-const SCHEMA_VERSION = 4
+const SCHEMA_VERSION = 5
 
 function defaultStats(): LetterStats {
   return { seen: 0, correct: 0, wrong: 0, avgReactionTime: 0, masteryLevel: 0 }
@@ -18,6 +18,7 @@ function defaultProgress(): PlayerProgress {
     letterStats: {},
     numberStats: {},
     mathStats: {},
+    englishStats: {},
     stageStars: {},
     stageLevels: {},
     capturedMonsters: [],
@@ -35,6 +36,7 @@ function defaultProgress(): PlayerProgress {
  *   v2 → v3: stageLevels（ステージ×難易度のクリア状況）を追加。
  *            旧データで★のあるステージは「難易度1クリア済み」とみなす
  *   v3 → v4: capturedMonsters（なかま）と captureFailCounts（pity 救済）を追加
+ *   v4 → v5: englishStats（英語ステージの学習統計）を追加
  */
 export function migrateProgress(parsed: Partial<PlayerProgress>): PlayerProgress {
   const base = defaultProgress()
@@ -42,7 +44,7 @@ export function migrateProgress(parsed: Partial<PlayerProgress>): PlayerProgress
   // 型の整合性チェック（壊れたフィールドだけ既定値に戻す＝部分復元）
   if (!Array.isArray(merged.capturedMonsters)) merged.capturedMonsters = []
   if (!Array.isArray(merged.unlockedStages)) merged.unlockedStages = base.unlockedStages
-  for (const key of ['letterStats', 'numberStats', 'mathStats', 'stageStars', 'stageLevels', 'captureFailCounts'] as const) {
+  for (const key of ['letterStats', 'numberStats', 'mathStats', 'englishStats', 'stageStars', 'stageLevels', 'captureFailCounts'] as const) {
     if (typeof merged[key] !== 'object' || merged[key] === null || Array.isArray(merged[key])) {
       ;(merged as Record<string, unknown>)[key] = {}
     }
@@ -60,6 +62,9 @@ export function migrateProgress(parsed: Partial<PlayerProgress>): PlayerProgress
   if ((parsed.schemaVersion ?? 1) < 4) {
     merged.capturedMonsters = []
     merged.captureFailCounts = {}
+  }
+  if ((parsed.schemaVersion ?? 1) < 5) {
+    merged.englishStats = {}
   }
   return merged
 }
@@ -149,6 +154,7 @@ export function importSave(json: string): boolean {
 function statsMapFor(progress: PlayerProgress, kind: TargetKind | 'math'): Record<string, LetterStats> {
   if (kind === 'math') return progress.mathStats
   if (kind === 'number') return progress.numberStats
+  if (kind === 'english') return progress.englishStats
   return progress.letterStats
 }
 

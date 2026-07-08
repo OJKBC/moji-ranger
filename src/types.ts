@@ -14,10 +14,15 @@ export interface Hero {
   frameIndex: number
 }
 
-export type StageType = 'hiragana' | 'katakana' | 'number' | 'math' | 'boss'
-export type TargetKind = 'hiragana' | 'katakana' | 'number' | 'picture'
+export type StageType = 'hiragana' | 'katakana' | 'number' | 'math' | 'boss' | 'english'
+export type TargetKind = 'hiragana' | 'katakana' | 'number' | 'picture' | 'english'
 /** ゲームプレイの型。find=正解さがし / sequence=順序撃ち / math=算数ゲート */
 export type StageMode = 'find' | 'sequence' | 'math'
+/**
+ * 英語ステージ（type: 'english'・mode は 'find' を使う）の出題種別。
+ * letter=アルファベット認識 / spell=スペル選択 / meaning=英語→意味（ひらがな）
+ */
+export type EnglishMode = 'letter' | 'spell' | 'meaning'
 
 /** ステージデータ内のターゲット定義（出現位置・速度はランタイムで決まる） */
 export interface TargetSpec {
@@ -126,6 +131,8 @@ export interface Stage {
   hidden?: boolean
   /** math モード: 難易度別のランダム出題パラメータ（あれば problems より優先） */
   mathLevels?: Record<number, MathLevelSpec>
+  /** english ステージの出題種別（type: 'english' のとき必須。出題内容は src/data/english.ts） */
+  enMode?: EnglishMode
   /** ゲームシーンの描画方式。'2.5d'=オンレール対峙 / 省略時 '2d'=固定画面（レガシー） */
   renderer?: '2d' | '2.5d'
   /** 2.5d 用: 連戦→ボスのバトル定義（推奨） */
@@ -182,6 +189,8 @@ export interface PlayerProgress {
   letterStats: Record<string, LetterStats>
   numberStats: Record<string, LetterStats>
   mathStats: Record<string, LetterStats>
+  /** 英語（アルファベット・単語）の学習統計（schemaVersion 5 で追加） */
+  englishStats: Record<string, LetterStats>
   /** ステージごとのベスト★（schemaVersion 2 で追加） */
   stageStars: Record<string, number>
   /** ステージごとのクリア済み最高難易度 0〜3（schemaVersion 3 で追加） */

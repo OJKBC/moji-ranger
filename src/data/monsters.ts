@@ -11,6 +11,12 @@ export interface MonsterSpawnTable {
   weights: Record<DifficultyLevel, { weak: number; strong: number }>
   /** グループごとの浄化に必要な正解数 [最小, 最大]（この範囲からランダム） */
   purifySteps: { weak: [number, number]; strong: [number, number] }
+  /**
+   * ボス抽選の重み（㉖）。まだ捕まえていないつよいモンスターを優先しつつ、
+   * 捕獲済みも「ゼロにはしない」で低確率に残す（捕獲は確率制なので再挑戦の機会を確保）。
+   * 全部captured済みなら全員が captured 重み＝実質いつもの均等抽選になる。
+   */
+  bossWeights: { uncaptured: number; captured: number }
 }
 
 export const MONSTER_TABLE: MonsterSpawnTable = {
@@ -21,4 +27,5 @@ export const MONSTER_TABLE: MonsterSpawnTable = {
     3: { weak: 0.25, strong: 0.75 }, // 難易度3: つよい中心
   },
   purifySteps: { weak: [1, 2], strong: [2, 3] },
+  bossWeights: { uncaptured: 1.0, captured: 0.2 },
 }

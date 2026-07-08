@@ -7,6 +7,8 @@ import { MONSTER_FILES } from './monsterManifest'
 import { MONSTER_TABLE } from '../data/monsters'
 import { wordsForLevel } from '../data/words'
 import type { WordSpec } from '../data/words'
+import { ABC_CONFUSABLES, abcLetters, MEANING_WORDS, meaningDistractors, SPELL_WORDS } from '../data/english'
+import type { MeaningSpec, SpellSpec } from '../data/english'
 import { BALLS, PITY_FAILS, rollBall } from '../data/balls'
 import type { BallSpec } from '../data/balls'
 import { monsterName } from '../data/monsterNames'
@@ -143,10 +145,14 @@ export class Ride25DScene extends Phaser.Scene {
   private wordQueue: WordSpec[] = []
   /** math: 現在の問題（mathLevels からランダム生成） */
   private currentProblem: MathProblem | null = null
+  /** english: 今読み上げる英語トークン（アルファベット/単語）。統計キー・聞き直しにも使う */
+  private currentEnWord = ''
 
   // モンスターの抽選（グループ・浄化回数は data/monsters.ts のテーブルで決まる）
   private monsterKeys: { weak: string[]; strong: string[]; boss: string[] } = { weak: [], strong: [], boss: [] }
   private lastMonsterKey = ''
+  /** 直前に出したボス（同じボスの連続出現を避けるため） */
+  private lastBossKey = ''
   private approachGroup: 'weak' | 'strong' = 'weak'
   /** いま対峙しているボスのモンスターID（なかまボールの対象） */
   private bossMonsterId = ''
@@ -205,8 +211,15 @@ export class Ride25DScene extends Phaser.Scene {
       this.load.image(key, `${import.meta.env.BASE_URL}assets/monsters/${f}`)
       return key
     })
+    // ㉖ つよいの抽選は「未捕獲を優先」。今回読み込む顔ぶれ自体も未捕獲寄りに選び、
+    //    まだ捕まえていないボスが実際に登場しやすくする（捕獲済みも低い重みで残す）
+    const capturedSet = new Set(loadProgress().capturedMonsters)
+    const strongWeight = (f: string) =>
+      capturedSet.has(f.replace(/\.png$/, '')) ? 0.35 : 1
     this.monsterKeys.weak = load(sample(MONSTER_FILES.weak, MONSTER_TABLE.sampleSize.weak))
-    this.monsterKeys.strong = load(sample(MONSTER_FILES.strong, MONSTER_TABLE.sampleSize.strong))
+    this.monsterKeys.strong = load(
+      this.weightedSample(MONSTER_FILES.strong, MONSTER_TABLE.sampleSize.strong, strongWeight),
+    )
     this.monsterKeys.boss = load(sample(MONSTER_FILES.boss, 1))
 
     // なかまボール（ボス浄化後の捕獲演出用）
@@ -217,31 +230,74 @@ export class Ride25DScene extends Phaser.Scene {
 
   /** 出現テーブル（data/monsters.ts）に従ってモンスターを1体選ぶ */
   private pickMonster(isBoss: boolean): { key: string; group: 'weak' | 'strong' } {
-    let group: 'weak' | 'strong'
-    let pool: string[]
     if (isBoss) {
       // ボスはつよいグループから（専用画像があればそちらを優先）
-      group = 'strong'
-      pool = this.monsterKeys.boss.length ? this.monsterKeys.boss
+      const pool = this.monsterKeys.boss.length ? this.monsterKeys.boss
         : this.monsterKeys.strong.length ? this.monsterKeys.strong : this.monsterKeys.weak
-    } else {
-      const w = MONSTER_TABLE.weights[this.level]
-      const total = w.weak + w.strong
-      group = total > 0 && Math.random() < w.strong / total ? 'strong' : 'weak'
+      if (pool.length === 0) return { key: 'img-monster', group: 'weak' }
+      const key = this.pickWeightedBoss(pool)
+      this.lastMonsterKey = key
+      this.lastBossKey = key
+      // ボスは「なかまボール」の対象になるためモンスターIDを控える
+      this.bossMonsterId = key.startsWith('mon-') ? key.slice(4) : 'monster1'
+      return { key, group: 'strong' }
+    }
+    const w = MONSTER_TABLE.weights[this.level]
+    const total = w.weak + w.strong
+    let group: 'weak' | 'strong' = total > 0 && Math.random() < w.strong / total ? 'strong' : 'weak'
+    let pool = this.monsterKeys[group]
+    if (pool.length === 0) {
+      group = group === 'strong' ? 'weak' : 'strong'
       pool = this.monsterKeys[group]
-      if (pool.length === 0) {
-        group = group === 'strong' ? 'weak' : 'strong'
-        pool = this.monsterKeys[group]
-      }
     }
     if (pool.length === 0) return { key: 'img-monster', group: 'weak' }
     // 同じ敵ばかりにならないよう、直前と同じ画像は避ける
     const candidates = pool.length > 1 ? pool.filter(k => k !== this.lastMonsterKey) : pool
     const key = candidates[Phaser.Math.Between(0, candidates.length - 1)]
     this.lastMonsterKey = key
-    // ボスは「なかまボール」の対象になるためモンスターIDを控える
-    if (isBoss) this.bossMonsterId = key.startsWith('mon-') ? key.slice(4) : 'monster1'
     return { key, group }
+  }
+
+  /**
+   * ㉖ ボスを重み付き抽選する。未捕獲＝高い重み / 捕獲済み＝低い重み（data/monsters.ts）。
+   * 直前に出したボスはさらに出にくくする。全員captured済みなら全員同じ重み＝通常抽選になる。
+   */
+  private pickWeightedBoss(pool: string[]): string {
+    if (pool.length === 1) return pool[0]
+    const progress = loadProgress()
+    const W = MONSTER_TABLE.bossWeights
+    const weightOf = (key: string) => {
+      const id = key.startsWith('mon-') ? key.slice(4) : key
+      let w = isCaptured(progress, id) ? W.captured : W.uncaptured
+      if (key === this.lastBossKey) w *= 0.15 // 連続回避
+      return Math.max(w, 0.0001)
+    }
+    const total = pool.reduce((s, k) => s + weightOf(k), 0)
+    let r = Math.random() * total
+    for (const k of pool) {
+      r -= weightOf(k)
+      if (r <= 0) return k
+    }
+    return pool[pool.length - 1]
+  }
+
+  /** 重み付きの非復元抽選で n 個選ぶ（重みが高いものほど選ばれやすい） */
+  private weightedSample(files: string[], n: number, weightOf: (f: string) => number): string[] {
+    const pool = [...files]
+    const out: string[] = []
+    const count = Math.min(n, pool.length)
+    for (let i = 0; i < count; i++) {
+      const total = pool.reduce((s, f) => s + Math.max(weightOf(f), 0.0001), 0)
+      let r = Math.random() * total
+      let idx = pool.length - 1
+      for (let j = 0; j < pool.length; j++) {
+        r -= Math.max(weightOf(pool[j]), 0.0001)
+        if (r <= 0) { idx = j; break }
+      }
+      out.push(pool[idx])
+      pool.splice(idx, 1)
+    }
+    return out
   }
 
   create(): void {
@@ -616,6 +672,10 @@ export class Ride25DScene extends Phaser.Scene {
     this.hintGlowDone = false
     this.currentKind = this.stageData.correctKind
 
+    if (this.stageData.type === 'english') {
+      this.startEnglishStep()
+      return
+    }
     if (this.stageData.mode === 'sequence') {
       this.startSequenceStep()
       return
@@ -750,6 +810,190 @@ export class Ride25DScene extends Phaser.Scene {
     }
   }
 
+  // ------------------------------------------------------- english（㉔ 英語ステージ）
+
+  /**
+   * 英語ステージの出題。共通エンジン（対峙・バブル・浄化メーター・ライフ・読み上げ）は
+   * そのまま使い、差分は「出題内容と読み上げ言語（en-US）」だけ。
+   * 読み上げは voice.speakEn（英語クリップ→無ければ en-US 音声合成→無ければ視覚フォールバック）。
+   */
+  private startEnglishStep(): void {
+    const attempts = this.sessionCorrect + this.wrongTotal
+    const accuracy = attempts > 0 ? this.sessionCorrect / attempts : 1
+    let choiceCount = this.battle.choiceCount
+    if (attempts >= 3 && accuracy < 0.7) choiceCount = Math.max(3, choiceCount - 1)
+
+    if (this.stageData.enMode === 'spell') { this.startEnSpellStep(choiceCount); return }
+    if (this.stageData.enMode === 'meaning') { this.startEnMeaningStep(choiceCount); return }
+    this.startEnLetterStep(choiceCount)
+  }
+
+  /** ① abc: 読み上げたアルファベットを選択肢から選ぶ（出題は英語のみ） */
+  private startEnLetterStep(choiceCount: number): void {
+    const pool = abcLetters(this.level)
+    const target = this.bossActive && this.practiced.length
+      ? this.pickEnglishFrom(this.practiced)
+      : this.pickEnglishFrom(pool)
+    this.currentTarget = target
+    this.currentKind = 'english'
+    this.currentEnWord = target
+    this.recentTargets.push(target)
+
+    const labels = Phaser.Utils.Array.Shuffle([target, ...this.pickAbcDistractors(target, choiceCount - 1)])
+    this.announceEnglish(target, target)
+    this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
+      this.spawnBubbleArc(labels)
+      recordSeen(target, 'english')
+      this.beginStepInput()
+    })
+  }
+
+  /** ② words: 単語を読み上げ、正しいスペルのバブルを選ぶ（誤答スペルはデータで用意） */
+  private startEnSpellStep(choiceCount: number): void {
+    const pool = SPELL_WORDS[this.level] ?? SPELL_WORDS[1]
+    let spec: SpellSpec
+    if (this.bossActive && this.practiced.length) {
+      const word = this.pickEnglishFrom(this.practiced)
+      spec = pool.find(s => s.word === word) ?? pool[Phaser.Math.Between(0, pool.length - 1)]
+    } else {
+      const recent = new Set(this.recentTargets.slice(-3))
+      const avail = pool.filter(s => !recent.has(s.word))
+      const src = avail.length ? avail : pool
+      spec = src[Phaser.Math.Between(0, src.length - 1)]
+    }
+    this.currentTarget = spec.word
+    this.currentKind = 'english'
+    this.currentEnWord = spec.word
+    this.recentTargets.push(spec.word)
+
+    const wrongs = Phaser.Utils.Array.Shuffle([...spec.wrong]).slice(0, choiceCount - 1)
+    const labels = Phaser.Utils.Array.Shuffle([spec.word, ...wrongs])
+    this.announceEnglish(spec.word, spec.word)
+    this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
+      this.spawnBubbleArc(labels)
+      recordSeen(spec.word, 'english')
+      this.beginStepInput()
+    })
+  }
+
+  /** ③ meaning: 英単語を読み上げ、その意味（ひらがな）を選ぶ。誤答は同じジャンルで揃える */
+  private startEnMeaningStep(choiceCount: number): void {
+    const pool = MEANING_WORDS[this.level] ?? MEANING_WORDS[1]
+    let spec: MeaningSpec
+    if (this.bossActive && this.practiced.length) {
+      const meaning = this.pickEnglishFrom(this.practiced)
+      spec = pool.find(m => m.meaning === meaning) ?? pool[Phaser.Math.Between(0, pool.length - 1)]
+    } else {
+      const recent = new Set(this.recentTargets.slice(-3))
+      const avail = pool.filter(m => !recent.has(m.meaning))
+      const src = avail.length ? avail : pool
+      spec = src[Phaser.Math.Between(0, src.length - 1)]
+    }
+    this.currentTarget = spec.meaning // バブルはひらがなの意味
+    this.currentKind = 'hiragana'
+    this.currentEnWord = spec.word
+    this.recentTargets.push(spec.meaning)
+
+    const labels = Phaser.Utils.Array.Shuffle([spec.meaning, ...meaningDistractors(spec, this.level, choiceCount - 1)])
+    this.announceEnglish(spec.word, spec.word)
+    this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
+      this.spawnBubbleArc(labels)
+      recordSeen(spec.word, 'english')
+      this.beginStepInput()
+    })
+  }
+
+  /**
+   * 英語ターゲットを選ぶ簡易ピッカー（englishStats を使った間隔反復）。
+   * 未出題・苦手を優先し、直近に出したものは避ける。ボス復習にも同じ関数を使う。
+   */
+  private pickEnglishFrom(pool: string[]): string {
+    const uniq = [...new Set(pool)]
+    if (uniq.length === 1) return uniq[0]
+    const stats = loadProgress().englishStats
+    const recentSet = new Set(this.recentTargets.slice(-3))
+    let candidates = uniq.filter(l => !recentSet.has(l))
+    if (candidates.length === 0) candidates = uniq
+    let best = candidates[0]
+    let bestScore = -Infinity
+    for (const label of candidates) {
+      const s = stats[label]
+      const seen = s?.seen ?? 0
+      let score = Math.random() * 2
+      if (seen === 0) score += 3
+      score -= Math.min(seen, 12) * 0.4
+      score += (s?.wrong ?? 0) * 1.5
+      if (score > bestScore) { bestScore = score; best = label }
+    }
+    return best
+  }
+
+  /**
+   * abc の選択肢を選ぶ。形が紛らわしい文字（b/d・p/q 等）を優先し、
+   * 難易度3では大文字小文字の対応（例: b と B）も混ぜる。
+   */
+  private pickAbcDistractors(target: string, count: number): string[] {
+    const pool = abcLetters(this.level)
+    const excluded = new Set([target])
+    const picked: string[] = []
+    for (const c of ABC_CONFUSABLES[target] ?? []) {
+      if (picked.length >= Math.min(2, count)) break
+      if (pool.includes(c) && !excluded.has(c)) { picked.push(c); excluded.add(c) }
+    }
+    if (this.level >= 3 && picked.length < count) {
+      const opp = target === target.toLowerCase() ? target.toUpperCase() : target.toLowerCase()
+      if (opp !== target && pool.includes(opp) && !excluded.has(opp)) { picked.push(opp); excluded.add(opp) }
+    }
+    const rest = Phaser.Utils.Array.Shuffle(pool.filter(l => !excluded.has(l)))
+    while (picked.length < count && rest.length) picked.push(rest.pop()!)
+    return picked
+  }
+
+  /**
+   * 英語の読み上げ＋「音が鳴った」合図。音が出せない端末では対象を大きく表示する
+   * （フォールバック。abc/words は文字そのもの、meaning は英単語を出す）。
+   */
+  private announceEnglish(display: string, enWord: string): void {
+    if (voice.speakEn(enWord)) {
+      this.tweens.add({ targets: this.missionBar, scale: 1.07, duration: 200, yoyo: true, repeat: 1 })
+      return
+    }
+    sfx.pop()
+    const size = display.length >= 5 ? '68px' : display.length >= 4 ? '84px' : display.length >= 2 ? '96px' : '120px'
+    const glow = this.add.image(GAME_W / 2, 470, 'softglow')
+      .setDepth(8390).setScale(1.6).setAlpha(0.8).setTint(0xfff2c0)
+    const big = this.add.text(GAME_W / 2, 470, display, {
+      fontFamily: FONT, fontSize: size, fontStyle: 'bold', color: '#ffffff',
+    }).setOrigin(0.5).setDepth(8400).setStroke('#7a4dff', 12).setScale(0)
+    big.setShadow(0, 5, 'rgba(80,40,120,0.45)', 10)
+    this.tweens.add({ targets: big, scale: 1, duration: 240, ease: 'Back.easeOut' })
+    this.tweens.add({
+      targets: [big, glow], alpha: 0, y: 430, duration: 300, delay: 900, ease: 'Cubic.easeIn',
+      onComplete: () => { big.destroy(); glow.destroy() },
+    })
+  }
+
+  /** 英語正解時の演出: 大きく表示＋英語で読み上げ（meaning は「英語→意味」の順で読む） */
+  private showEnglishReward(label: string, enWord: string): void {
+    const size = label.length >= 5 ? '96px' : label.length >= 4 ? '112px' : label.length >= 2 ? '130px' : '150px'
+    const glow = this.add.image(GAME_W / 2, 455, 'softglow')
+      .setDepth(8490).setScale(2.2).setAlpha(0.85).setTint(0xfff2c0)
+    const big = this.add.text(GAME_W / 2, 455, label, {
+      fontFamily: FONT, fontSize: size, fontStyle: 'bold', color: '#ffffff',
+    }).setOrigin(0.5).setDepth(8500).setStroke('#ff8fb0', 12).setScale(0)
+    big.setShadow(0, 6, 'rgba(80,40,120,0.45)', 12)
+    this.tweens.add({ targets: big, scale: 1, duration: 260, ease: 'Back.easeOut' })
+    this.tweens.add({
+      targets: [big, glow], alpha: 0, y: 405, duration: 340, delay: 800, ease: 'Cubic.easeIn',
+      onComplete: () => { big.destroy(); glow.destroy() },
+    })
+    voice.speakEn(enWord)
+    if (this.stageData.enMode === 'meaning') {
+      // 「cat は ねこ！」= 英語のあとに意味（ひらがな）も読むと学習効果が高い
+      this.time.delayedCall(720, () => voice.speak(`${this.currentTarget}！`))
+    }
+  }
+
   /**
    * 選択肢バブルを敵を囲むリング状に出す。
    * 中央の敵エリア（ボスの体格ぶん）を空け、モンスターに重ならない配置。
@@ -809,6 +1053,10 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   private speakPrompt(): void {
+    if (this.stageData.type === 'english') {
+      if (this.currentEnWord) this.announceEnglish(this.currentEnWord, this.currentEnWord)
+      return
+    }
     if (this.stageData.mode === 'math') {
       if (this.currentProblem) voice.speak(this.currentProblem.voicePrompt)
       return
@@ -821,9 +1069,11 @@ export class Ride25DScene extends Phaser.Scene {
     if (this.currentTarget) voice.speak(`${this.currentTarget}！`, { rate: 0.7 })
   }
 
-  /** 学習統計への記録（math は問題キー・それ以外は文字。既存の記録ルールを共通化） */
+  /** 学習統計への記録（math は問題キー・english は英語トークン・それ以外は文字） */
   private recordStat(correct: boolean, reactionMs?: number): void {
-    if (this.stageData.mode === 'math' && this.currentProblem) {
+    if (this.stageData.type === 'english') {
+      recordAnswer(this.currentEnWord, 'english', correct, reactionMs)
+    } else if (this.stageData.mode === 'math' && this.currentProblem) {
       recordAnswer(this.currentProblem.question, 'math', correct, reactionMs)
     } else {
       recordAnswer(this.currentTarget, this.currentKind, correct, reactionMs)
@@ -838,9 +1088,12 @@ export class Ride25DScene extends Phaser.Scene {
     const imgScale = 160 / Math.max(tex.width, tex.height) // 直径160px 基準（radius 計算と一致）
     const backing = this.add.circle(0, 0, 66, BUBBLE_COLORS[colorIndex], 0.82)
     const bubble = this.add.image(0, 0, 'img-bubble').setScale(imgScale)
+    // 複数文字（英単語スペル・ひらがなの意味など）は円に収まるよう文字を小さくする
+    const n = [...label].length
+    const fontSize = n >= 5 ? '30px' : n >= 4 ? '36px' : n >= 3 ? '44px' : n >= 2 ? '52px' : '62px'
     const letter = this.add.text(0, 0, label, {
-      fontFamily: FONT, fontSize: '62px', fontStyle: 'bold', color: '#33336b',
-    }).setOrigin(0.5).setStroke('#ffffff', 8)
+      fontFamily: FONT, fontSize, fontStyle: 'bold', color: '#33336b',
+    }).setOrigin(0.5).setStroke('#ffffff', n >= 4 ? 6 : 8)
     // 文字バブルは常に不透明・最前面（敵と重なってもくっきり）
     const container = this.add.container(x, y, [backing, bubble, letter]).setDepth(6000)
     const baseScale = 0.76
@@ -916,7 +1169,11 @@ export class Ride25DScene extends Phaser.Scene {
       return
     }
 
-    this.showBigLetter(b.label)
+    if (this.stageData.type === 'english') {
+      this.showEnglishReward(b.label, this.currentEnWord)
+    } else {
+      this.showBigLetter(b.label)
+    }
     this.clearBubbles()
     // Lv3 はテンポをわずかに上げる
     if (wordDone) {
@@ -1399,6 +1656,10 @@ export class Ride25DScene extends Phaser.Scene {
       } else if (this.stageData.mode === 'math') {
         this.showGentleFeedback(b.container.x, b.container.y, 'うーん、ちがうみたい！')
         if (this.currentProblem) voice.speak(this.currentProblem.voicePrompt)
+      } else if (this.stageData.type === 'english') {
+        // 誤答スペル/文字は読まず、正解の英語をもう一度きかせる（叱らない）
+        this.showGentleFeedback(b.container.x, b.container.y, 'ちがうみたい！ もういちど きいてね')
+        voice.speakEn(this.currentEnWord)
       } else {
         this.showGentleFeedback(b.container.x, b.container.y, `これは「${b.label}」だよ`)
         voice.speak(`これは、${b.label}、だよ`)
@@ -1715,20 +1976,21 @@ export class Ride25DScene extends Phaser.Scene {
   // ================================================================== UI
 
   /**
-   * 出題はすべて音声で伝えるため、文字のバーは出さない。
-   * 上部中央には「もう一度きく」🔊 ボタンだけを置く。
+   * 出題はすべて音声で伝えるため、文字のバーは出さない。「もう一度きく」🔊 ボタンだけを置く。
+   * ㉒ モンスターの顔と重ならないよう右下に配置する（もどるボタン=左上・ライフ/コンボ=右上・
+   * 両手ビームの操作＝画面全面タップとも干渉しない。iPhone のホームインジケータぶんの余白も確保）。
    */
   private buildMissionBar(): void {
-    const bg = this.add.circle(0, 0, 40, 0xffc94d)
-    bg.setStrokeStyle(4, 0xffffff, 0.9)
-    const speaker = this.add.text(0, 1, '🔊', { fontSize: '42px' }).setOrigin(0.5)
+    const bg = this.add.circle(0, 0, 44, 0xffc94d)
+    bg.setStrokeStyle(4, 0xffffff, 0.95)
+    const speaker = this.add.text(0, 1, '🔊', { fontSize: '46px' }).setOrigin(0.5)
     bg.setInteractive({ useHandCursor: true })
     bg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation()
       sfx.uiTap()
       this.speakPrompt()
     })
-    this.missionBar = this.add.container(GAME_W / 2, 56, [bg, speaker]).setDepth(8000)
+    this.missionBar = this.add.container(GAME_W - 74, GAME_H - 86, [bg, speaker]).setDepth(8000)
     this.missionBar.setScale(0)
     this.tweens.add({ targets: this.missionBar, scale: 1, duration: 320, ease: 'Back.easeOut' })
   }
