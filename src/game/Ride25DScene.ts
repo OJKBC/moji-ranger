@@ -544,21 +544,9 @@ export class Ride25DScene extends Phaser.Scene {
       },
     })
 
-    // もやパフ（ボスは多め）
+    // 黒いもやのパフは廃止（モンスターが隠れて見えないため）。
+    // 「もやに取り憑かれている」表現は、くすんだ色（tint）→浄化で本来の色に戻る、で行う
     this.mistPuffs = []
-    const offsets: Array<[number, number, number]> = isBoss
-      ? [[-135, -70, 1.2], [135, -65, 1.2], [-110, 55, 1.05], [110, 60, 1.05], [0, -125, 1.3], [0, 105, 1.0]]
-      : [[-100, -50, 0.9], [100, -45, 0.9], [0, -90, 1.0], [0, 75, 0.8]]
-    offsets.forEach(([ox, oy, s], i) => {
-      const puff = this.add.image(GAME_W / 2 + ox, targetY + oy, 'mist')
-        .setDepth(4010).setScale(0).setAlpha(0.9)
-      this.mistPuffs.push(puff)
-      this.tweens.add({ targets: puff, scale: s, duration: 600, delay: 250 + i * 60, ease: 'Sine.easeOut' })
-      this.tweens.add({
-        targets: puff, x: GAME_W / 2 + ox * 1.12, y: targetY + oy * 1.12,
-        duration: 2100 + i * 200, delay: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
-      })
-    })
 
     // 浄化メーターは複数回のときだけ（ザコ1発はテンポ優先）
     if (this.purifyStepsNeeded > 1) {
@@ -585,7 +573,8 @@ export class Ride25DScene extends Phaser.Scene {
       this.meterCells.push(cell)
       items.push(cell)
     }
-    this.meterBox = this.add.container(GAME_W / 2, 150, items).setDepth(8000).setScale(0)
+    // モンスターに重ならないよう、画面下（両手の間）に置く
+    this.meterBox = this.add.container(GAME_W / 2, 612, items).setDepth(8000).setScale(0)
     this.tweens.add({ targets: this.meterBox, scale: 1, duration: 320, delay: 400, ease: 'Back.easeOut' })
   }
 
@@ -747,17 +736,23 @@ export class Ride25DScene extends Phaser.Scene {
     }
   }
 
-  /** 選択肢バブルを敵を囲むアーチ状に出す（選択肢数に応じて等間隔に生成） */
+  /**
+   * 選択肢バブルを敵を囲むリング状に出す。
+   * 中央の敵エリア（ボスの体格ぶん）を空け、モンスターに重ならない配置。
+   */
   private spawnBubbleArc(labels: string[]): void {
-    const n = labels.length
-    const arc: Array<[number, number]> = labels.map((_, i) => {
-      const u = n <= 1 ? 0 : (i / (n - 1)) * 2 - 1 // -1〜1
-      return [u * 350, 350 - u * u * 105]
-    })
-    // 単調にならないよう、たまに左右反転
+    const RING: Record<number, Array<[number, number]>> = {
+      2: [[-330, 260], [330, 260]],
+      3: [[-335, 280], [335, 280], [0, 480]],
+      4: [[-345, 245], [345, 245], [-235, 460], [235, 460]],
+      5: [[-350, 235], [350, 235], [-270, 445], [270, 445], [0, 490]],
+      6: [[-360, 225], [360, 225], [-295, 425], [295, 425], [-115, 490], [115, 490]],
+    }
+    const ring = RING[labels.length] ?? RING[5]
+    // 単調にならないよう、たまに左右反転（配置は対称なので順序だけ変わる）
     const positions = (this.enemyIndex + this.purifyStep) % 2 === 1
-      ? arc.map(([x, y]) => [-x, y] as [number, number])
-      : arc
+      ? ring.map(([x, y]) => [-x, y] as [number, number])
+      : ring
     labels.forEach((label, i) => {
       const [ox, oy] = positions[i % positions.length]
       this.createChoiceBubble(label, this.currentKind, GAME_W / 2 + ox, oy, i)
@@ -780,31 +775,22 @@ export class Ride25DScene extends Phaser.Scene {
     const spoke = voice.speak(`${label}！`, { rate: 0.7 })
     if (spoke && voice.available()) {
       this.setMissionText('おとを きいて ねらおう！')
-      // 🔊 がふわっと光るだけ（答えは見せない）
-      const glow = this.add.image(GAME_W / 2, 300, 'softglow')
-        .setDepth(8390).setScale(1.3).setAlpha(0.7).setTint(0xfff2c0)
-      const icon = this.add.text(GAME_W / 2, 300, '🔊', { fontSize: '90px' })
-        .setOrigin(0.5).setDepth(8400).setScale(0)
-      this.tweens.add({ targets: icon, scale: 1, duration: 220, ease: 'Back.easeOut' })
-      this.tweens.add({ targets: icon, scale: 1.12, duration: 260, delay: 240, yoyo: true })
-      this.tweens.add({
-        targets: [icon, glow], alpha: 0, duration: 260, delay: 800,
-        ease: 'Cubic.easeIn',
-        onComplete: () => { icon.destroy(); glow.destroy() },
-      })
+      // ミッションバーをふわっとパルスさせて「音が鳴った」ことを伝える
+      // （中央に大きな🔊を出すとモンスターが隠れるためバー側で表現）
+      this.tweens.add({ targets: this.missionBar, scale: 1.07, duration: 200, yoyo: true, repeat: 1 })
       return
     }
-    // フォールバック: 音が出ない環境では文字で伝える（従来表示）
+    // フォールバック: 音が出ない環境では文字で伝える（モンスターを隠さない下側に表示）
     this.setMissionText(`「${label}」を ねらって！`)
-    const glow = this.add.image(GAME_W / 2, 300, 'softglow')
-      .setDepth(8390).setScale(1.7).setAlpha(0.8).setTint(0xfff2c0)
-    const big = this.add.text(GAME_W / 2, 300, label, {
-      fontFamily: FONT, fontSize: '130px', fontStyle: 'bold', color: '#ffffff',
+    const glow = this.add.image(GAME_W / 2, 470, 'softglow')
+      .setDepth(8390).setScale(1.5).setAlpha(0.8).setTint(0xfff2c0)
+    const big = this.add.text(GAME_W / 2, 470, label, {
+      fontFamily: FONT, fontSize: '110px', fontStyle: 'bold', color: '#ffffff',
     }).setOrigin(0.5).setDepth(8400).setStroke('#7a4dff', 12).setScale(0)
     big.setShadow(0, 5, 'rgba(80,40,120,0.45)', 10)
     this.tweens.add({ targets: big, scale: 1, duration: 240, ease: 'Back.easeOut' })
     this.tweens.add({
-      targets: [big, glow], alpha: 0, y: 250, duration: 300, delay: 750,
+      targets: [big, glow], alpha: 0, y: 430, duration: 300, delay: 750,
       ease: 'Cubic.easeIn',
       onComplete: () => { big.destroy(); glow.destroy() },
     })
@@ -923,10 +909,11 @@ export class Ride25DScene extends Phaser.Scene {
 
   /** 単語完成のお祝い（読み上げ＋大きな表示＋星バースト＋なかまの絵文字） */
   private celebrateWord(word: string, emoji: string): void {
-    const glow = this.add.image(GAME_W / 2, GAME_H / 2 - 40, 'softglow')
-      .setDepth(8480).setScale(3).setAlpha(0.9).setTint(0xffe9f5)
-    const big = this.add.text(GAME_W / 2, GAME_H / 2 - 60, word, {
-      fontFamily: FONT, fontSize: '150px', fontStyle: 'bold', color: '#ffffff',
+    // モンスター（笑顔になって浄化中）が隠れないよう、画面下側に出す
+    const glow = this.add.image(GAME_W / 2, 460, 'softglow')
+      .setDepth(8480).setScale(2.6).setAlpha(0.9).setTint(0xffe9f5)
+    const big = this.add.text(GAME_W / 2, 455, word, {
+      fontFamily: FONT, fontSize: '120px', fontStyle: 'bold', color: '#ffffff',
     }).setOrigin(0.5).setDepth(8500).setStroke('#ff8fb0', 14).setScale(0)
     big.setShadow(0, 6, 'rgba(80,40,120,0.45)', 12)
     voice.speak(`${word}！`, { rate: 0.85 })
@@ -936,15 +923,15 @@ export class Ride25DScene extends Phaser.Scene {
       rotate: { min: 0, max: 360 }, lifespan: 900,
       tint: [0xffe066, 0xffffff, 0xff8fd0, 0x9ff3ff], emitting: false,
     }).setDepth(8490)
-    burst.explode(24, GAME_W / 2, GAME_H / 2 - 60)
+    burst.explode(24, GAME_W / 2, 455)
     const friends: Phaser.GameObjects.Text[] = []
     for (let i = 0; i < 3; i++) {
-      const friend = this.add.text(GAME_W / 2 + (i - 1) * 150, GAME_H / 2 + 110, emoji, { fontSize: '64px' })
+      const friend = this.add.text(GAME_W / 2 + (i - 1) * 170, 560, emoji, { fontSize: '58px' })
         .setOrigin(0.5).setDepth(8500).setScale(0)
       friends.push(friend)
       this.tweens.add({ targets: friend, scale: 1, duration: 260, delay: 150 + i * 110, ease: 'Back.easeOut' })
       this.tweens.add({
-        targets: friend, y: GAME_H / 2 + 75, duration: 320, delay: 150 + i * 110,
+        targets: friend, y: 525, duration: 320, delay: 150 + i * 110,
         yoyo: true, repeat: 2, ease: 'Sine.easeOut',
       })
     }
@@ -1482,17 +1469,18 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   private showBigLetter(label: string): void {
-    const glow = this.add.image(GAME_W / 2, GAME_H / 2 - 30, 'softglow')
-      .setDepth(8490).setScale(2.6).setAlpha(0.85).setTint(0xfff2c0)
-    const big = this.add.text(GAME_W / 2, GAME_H / 2 - 30, label, {
-      fontFamily: FONT, fontSize: '200px', fontStyle: 'bold', color: '#ffffff',
-    }).setOrigin(0.5).setDepth(8500).setStroke('#ff8fb0', 14)
+    // モンスターが隠れないよう、画面下側（バブルは消えたあと）に出す
+    const glow = this.add.image(GAME_W / 2, 455, 'softglow')
+      .setDepth(8490).setScale(2.2).setAlpha(0.85).setTint(0xfff2c0)
+    const big = this.add.text(GAME_W / 2, 455, label, {
+      fontFamily: FONT, fontSize: '150px', fontStyle: 'bold', color: '#ffffff',
+    }).setOrigin(0.5).setDepth(8500).setStroke('#ff8fb0', 12)
     big.setShadow(0, 6, 'rgba(80,40,120,0.45)', 12)
     big.setScale(0)
     voice.speak(label, { rate: 0.75 })
     this.tweens.add({ targets: big, scale: 1, duration: 260, ease: 'Back.easeOut' })
     this.tweens.add({
-      targets: [big, glow], alpha: 0, y: GAME_H / 2 - 90, duration: 340, delay: 800,
+      targets: [big, glow], alpha: 0, y: 405, duration: 340, delay: 800,
       ease: 'Cubic.easeIn',
       onComplete: () => { big.destroy(); glow.destroy() },
     })

@@ -12,6 +12,7 @@ class SfxPlayer {
   private noiseBuffer: AudioBuffer | null = null
   /** 同種音の直近再生時刻（連打でうるさくならないよう間引く） */
   private lastPlayAt: Record<string, number> = {}
+  private unmuteDone = false
   enabled = true
 
   /** 同じ種類の音が minGapMs 以内に鳴っていたら true（=スキップする） */
@@ -37,6 +38,31 @@ class SfxPlayer {
       for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume()
+    // iOS はサイレントスイッチON だと WebAudio が消音される（TTS は鳴るので
+    // 「効果音だけ出ない」ように見える）。無音の <audio> を一度再生して
+    // オーディオセッションを「再生」扱いに昇格させる定番の回避策
+    if (!this.unmuteDone) {
+      this.unmuteDone = true
+      try {
+        const el = new Audio(
+          'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA',
+        )
+        el.volume = 0.01
+        void el.play().catch(() => {})
+      } catch {
+        // 失敗しても効果音の再生自体は試みる
+      }
+    }
+  }
+
+  /**
+   * 再生直前の保険。モバイルはタブ切替や画面ロックで AudioContext が
+   * suspended に戻ることがあるため、毎回状態を確認して復帰させる。
+   */
+  private ready(): boolean {
+    if (!this.enabled || !this.ctx || !this.master) return false
+    if (this.ctx.state === 'suspended') void this.ctx.resume()
+    return true
   }
 
   private tone(
@@ -47,35 +73,37 @@ class SfxPlayer {
     volume: number,
     delay = 0,
   ): void {
-    if (!this.enabled || !this.ctx || !this.master) return
-    const t0 = this.ctx.currentTime + delay
-    const osc = this.ctx.createOscillator()
-    const gain = this.ctx.createGain()
+    if (!this.ready()) return
+    const ctx = this.ctx!
+    const t0 = ctx.currentTime + delay
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
     osc.type = type
     osc.frequency.setValueAtTime(startFreq, t0)
     if (endFreq !== startFreq) osc.frequency.exponentialRampToValueAtTime(Math.max(1, endFreq), t0 + duration)
     gain.gain.setValueAtTime(volume, t0)
     gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration)
     osc.connect(gain)
-    gain.connect(this.master)
+    gain.connect(this.master!)
     osc.start(t0)
     osc.stop(t0 + duration + 0.02)
   }
 
   private noise(duration: number, volume: number, filterFreq: number, delay = 0): void {
-    if (!this.enabled || !this.ctx || !this.master || !this.noiseBuffer) return
-    const t0 = this.ctx.currentTime + delay
-    const src = this.ctx.createBufferSource()
+    if (!this.ready() || !this.noiseBuffer) return
+    const ctx = this.ctx!
+    const t0 = ctx.currentTime + delay
+    const src = ctx.createBufferSource()
     src.buffer = this.noiseBuffer
-    const filter = this.ctx.createBiquadFilter()
+    const filter = ctx.createBiquadFilter()
     filter.type = 'bandpass'
     filter.frequency.value = filterFreq
-    const gain = this.ctx.createGain()
+    const gain = ctx.createGain()
     gain.gain.setValueAtTime(volume, t0)
     gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration)
     src.connect(filter)
     filter.connect(gain)
-    gain.connect(this.master)
+    gain.connect(this.master!)
     src.start(t0)
     src.stop(t0 + duration)
   }

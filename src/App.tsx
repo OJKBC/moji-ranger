@@ -50,6 +50,14 @@ export default function App() {
   const [playKey, setPlayKey] = useState(0)
 
   useEffect(() => {
+    // モバイルの音声解禁: 最初のタップに限らず、あらゆるユーザー操作で
+    // AudioContext を作成/resume する（タブ切替や画面ロックで止まっても復帰）
+    const unlockAudio = () => {
+      sfx.unlock()
+      voice.init()
+    }
+    document.addEventListener('pointerdown', unlockAudio, { passive: true })
+
     const onClear = (r: StageResult) => {
       setConfirmQuit(false)
       setResult(r)
@@ -63,6 +71,7 @@ export default function App() {
     EventBus.on('stage-clear', onClear)
     EventBus.on('stage-failed', onFailed)
     return () => {
+      document.removeEventListener('pointerdown', unlockAudio)
       EventBus.off('stage-clear', onClear)
       EventBus.off('stage-failed', onFailed)
     }
