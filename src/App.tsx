@@ -280,13 +280,10 @@ export default function App() {
                 : '⏩ つぎのステージ'}
             </button>
           )}
-          <button
-            className={next ? 'sub-button' : 'big-button'}
-            onClick={() => { sfx.uiTap(); playStage(stage, result.difficulty) }}
-          >
-            🔁 もういっかい
-          </button>
-          <button className="sub-button" onClick={() => openZukan('result')}>
+          {/* 子どもが間違えて押しやすい「もういっかい」「ステージマップへ」は撤去。
+             もどるは左上の ⬅ だけに集約（本人の明示要望）。
+             残すのは「レベル●のちょうせん（＝next）」と「ずかんをみる」のみ。 */}
+          <button className={next ? 'sub-button' : 'big-button'} onClick={() => openZukan('result')}>
             📖 ずかんをみる
           </button>
           {capturedThisRun && (
@@ -294,9 +291,6 @@ export default function App() {
               あたらしい なかまが ふえたよ！ ずかんを ほぞんしておくと あんしんだよ（ずかん → おうちのひと）
             </p>
           )}
-          <button className="sub-button" onClick={() => { sfx.uiTap(); setScreen('map') }}>
-            🗺️ ステージマップへ
-          </button>
         </div>
       )}
     </div>

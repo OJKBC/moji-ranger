@@ -32,7 +32,11 @@ body {
 
 .app {
   width: 100%;
-  height: 100dvh;
+  /* iPad(Safari) の横向きでツールバーぶんだけ実際の表示領域が 100dvh より
+     小さくなり、パネルが上に寄って隠れ・スクロールが必要になっていた。
+     常に見えている高さ(svh)を基準にして、見える範囲の中央に収める。 */
+  height: 100vh;
+  height: 100svh;
   background-size: cover;
   background-position: center;
   display: flex;
@@ -201,8 +205,10 @@ body {
 
 .map-screen {
   width: min(94vw, 860px);
-  /* safe area を避けつつ画面内に収め、あふれた分はグリッド側をスクロールさせる */
-  max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 16px);
+  /* safe area を避けつつ画面内に収め、あふれた分はグリッド側をスクロールさせる。
+     高さは svh 基準（横向き iPad でツールバーに隠れないように）。 */
+  max-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 16px);
+  max-height: calc(100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 16px);
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -589,8 +595,10 @@ body {
   align-items: center;
   gap: 10px;
   width: min(86vw, 420px);
-  /* あいぼうバッジ＋大きめボタンを足しても収まるよう、はみ出したら内部スクロール */
-  max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 28px);
+  /* あいぼうバッジ＋大きめボタンを足しても収まるよう、はみ出したら内部スクロール。
+     svh 基準で横向き iPad でも見える範囲に収める。 */
+  max-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 28px);
+  max-height: calc(100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 28px);
   overflow-y: auto;
   padding: 26px 22px;
   border-radius: 28px;
@@ -996,6 +1004,18 @@ body {
 }
 .path-node-name { font-size: clamp(14px, 3.4vw, 18px); font-weight: 800; color: #3a3a70; }
 .path-node.locked .path-node-name { color: #4a4560; }
+
+/* 横向き（iPad ランドスケープ等）は高さが限られるので、地図を少し詰めて
+   スクロールなしで収まりやすくする。縦向き（通常プレイ）には影響しない。 */
+@media (orientation: landscape) {
+  .map-screen { padding: 14px 22px; gap: 10px; }
+  .pathmap { gap: 0; padding: 4px 0 10px; }
+  .path-link { height: 16px; }
+  .path-node { padding: 10px 12px 9px; gap: 3px; }
+  .path-node-icon { font-size: clamp(28px, 5.5vw, 42px); }
+  .path-start,
+  .path-goal { padding: 5px 18px; }
+}
 
 /* ---- ㊷ ログインボーナス ---- */
 
