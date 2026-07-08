@@ -49,6 +49,9 @@ const EXCLUDE = [
   '00_59_17 (2).png',
   '00_59_17 (4).png',
   '00_59_17 (5).png',
+  // --- 2026-07-08 追加分の除外 ---
+  '10_46_37 (3).png', // よわい: 既存作品キャラに酷似（ピンクの魔人）
+  '10_46_37 (4).png', // つよい: 既存作品キャラに酷似（紫の猫神）
 ]
 
 const groups = [
@@ -113,6 +116,11 @@ fs.rmSync(DST, { recursive: true, force: true })
 fs.mkdirSync(DST, { recursive: true })
 const makeSheet = process.argv.includes('--sheet')
 
+// 原画→出力番号の永続マッピング。**番号は一度割り当てたら変えない**
+// （ずかんの「なかま」保存・モンスター名がIDに紐づくため。新規原画には空き番号を追加）
+const MAP_PATH = path.join(root, 'monster-map.json')
+const map = fs.existsSync(MAP_PATH) ? JSON.parse(fs.readFileSync(MAP_PATH, 'utf8')) : {}
+
 const manifest = {}
 for (const { srcDir, prefix } of groups) {
   const dir = path.join(SRC, srcDir)
@@ -120,14 +128,24 @@ for (const { srcDir, prefix } of groups) {
     .filter(f => f.toLowerCase().endsWith('.png'))
     .filter(f => !EXCLUDE.some(e => f.includes(e)))
     .sort()
+  // 既存の割当を尊重し、新規ファイルには最大番号+1 から振る
+  let nextFree = Object.values(map)
+    .filter(v => v.startsWith(`${prefix}-`))
+    .reduce((mx, v) => Math.max(mx, Number(v.slice(prefix.length + 1))), 0) + 1
+  const entries = []
+  for (const f of files) {
+    const mapKey = `${srcDir}/${f}`
+    if (!map[mapKey]) map[mapKey] = `${prefix}-${nextFree++}`
+    entries.push({ f, outName: `${map[mapKey]}.png`, n: Number(map[mapKey].slice(prefix.length + 1)) })
+  }
+  entries.sort((a, b) => a.n - b.n)
+
   const outNames = []
   const thumbs = []
-  let n = 1
-  for (const f of files) {
+  for (const { f, outName, n } of entries) {
     const resized = sharp(path.join(dir, f)).resize({ width: 640 })
     const { data, info } = await resized.ensureAlpha().raw().toBuffer({ resolveWithObject: true })
     floodKey(data, info.width, info.height, 42)
-    const outName = `${prefix}-${n}.png`
     await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } })
       .png({ compressionLevel: 9, palette: true, quality: 90 })
       .toFile(path.join(DST, outName))
@@ -137,11 +155,10 @@ for (const { srcDir, prefix } of groups) {
         .resize({ width: 150, height: 150, fit: 'contain', background: { r: 40, g: 30, b: 70, alpha: 1 } })
         .png().toBuffer()
       const label = Buffer.from(
-        `<svg width="150" height="26"><rect width="150" height="26" fill="#000a"/><text x="6" y="19" font-size="16" fill="#fff" font-family="sans-serif">${n}: ${f.slice(0, 24)}</text></svg>`,
+        `<svg width="150" height="26"><rect width="150" height="26" fill="#000a"/><text x="6" y="19" font-size="16" fill="#fff" font-family="sans-serif">${n}: ${f.slice(16, 40)}</text></svg>`,
       )
       thumbs.push({ thumb, label, n })
     }
-    n++
   }
   manifest[prefix] = outNames
   console.log(`${srcDir}: ${outNames.length}枚 → ${prefix}-*.png`)
@@ -175,5 +192,6 @@ export const MONSTER_FILES = {
   boss: [] as string[],
 }
 `
+fs.writeFileSync(MAP_PATH, JSON.stringify(map, null, 2))
 fs.writeFileSync(MANIFEST, ts)
 console.log('monsterManifest.ts generated')

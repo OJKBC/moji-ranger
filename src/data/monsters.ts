@@ -14,7 +14,7 @@ export interface MonsterSpawnTable {
 }
 
 export const MONSTER_TABLE: MonsterSpawnTable = {
-  sampleSize: { weak: 4, strong: 4 },
+  sampleSize: { weak: 5, strong: 5 }, // 総数が増えたので1プレイの顔ぶれも少し多めに
   weights: {
     1: { weak: 1, strong: 0 }, // 難易度1: よわいのみ
     2: { weak: 0.7, strong: 0.3 }, // 難易度2: よわい中心＋ときどきつよい
