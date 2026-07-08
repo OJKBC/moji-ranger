@@ -2,7 +2,11 @@ import { STAGES } from './data/stages'
 import { clearedLevelOf, isStageUnlocked, loadProgress } from './store/progress'
 import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
+import { MAX_DIFFICULTY } from './types'
 import type { DifficultyLevel, Stage } from './types'
+
+/** 難易度バッジの並び（1..最高難易度） */
+const LEVELS = Array.from({ length: MAX_DIFFICULTY }, (_, i) => i + 1)
 
 /** ステージごとの見た目（マップカードの絵文字と色） */
 const STAGE_ICONS: Record<string, string> = {
@@ -71,7 +75,7 @@ export function StageMap({ onSelect, onBack, onZukan }: Props) {
               <span className="stage-name">{stage.title}</span>
               {/* 難易度進捗: クリア済み=点灯 / 次に挑戦=ふちどり / 未到達=うすく */}
               <span className="stage-levels">
-                {([1, 2, 3] as const).map(n => (
+                {LEVELS.map(n => (
                   <span
                     key={n}
                     className={

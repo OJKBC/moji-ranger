@@ -10,7 +10,8 @@ import type { DifficultyLevel } from '../types'
 
 /**
  * 難易度別の対象アルファベット。
- * 1=小文字 / 2=大文字 / 3=小文字＋大文字の混在。
+ * 1=小文字 / 2=大文字 / 3〜5=小文字＋大文字の混在（上の難易度ほど紛らわしい形を多めに＝
+ * 選択肢生成側の maxConfusables で調整）。混在でも「同じ文字の大小」は同一問題に出さない（㉙）。
  */
 export function abcLetters(level: DifficultyLevel): string[] {
   const lower = 'abcdefghijklmnopqrstuvwxyz'.split('')
@@ -18,6 +19,34 @@ export function abcLetters(level: DifficultyLevel): string[] {
   if (level === 1) return lower
   if (level === 2) return upper
   return [...lower, ...upper]
+}
+
+/**
+ * ㉚「A for Apple」方式の例単語。
+ * 合成音声だと N/M・B/D・F/S などの単発音が聞き分けにくいため、読み上げは
+ * 「レターネーム＋for＋例単語」にし、画面にも例単語（＋絵文字）を出して必ず区別できるようにする。
+ * 4〜6歳が知っている身近な語。大文字も同じ例単語を使う（A も a も Apple）。あとから変更可。
+ */
+export interface AbcExample { word: string; emoji: string }
+export const ABC_EXAMPLES: Record<string, AbcExample> = {
+  a: { word: 'Apple', emoji: '🍎' }, b: { word: 'Ball', emoji: '⚽' },
+  c: { word: 'Cat', emoji: '🐱' }, d: { word: 'Dog', emoji: '🐶' },
+  e: { word: 'Egg', emoji: '🥚' }, f: { word: 'Fish', emoji: '🐟' },
+  g: { word: 'Grapes', emoji: '🍇' }, h: { word: 'Hat', emoji: '👒' },
+  i: { word: 'Ice', emoji: '🍦' }, j: { word: 'Juice', emoji: '🧃' },
+  k: { word: 'Kite', emoji: '🪁' }, l: { word: 'Lion', emoji: '🦁' },
+  m: { word: 'Mouse', emoji: '🐭' }, n: { word: 'Nest', emoji: '🪺' },
+  o: { word: 'Orange', emoji: '🍊' }, p: { word: 'Pig', emoji: '🐷' },
+  q: { word: 'Queen', emoji: '👑' }, r: { word: 'Rabbit', emoji: '🐰' },
+  s: { word: 'Sun', emoji: '☀️' }, t: { word: 'Tiger', emoji: '🐯' },
+  u: { word: 'Umbrella', emoji: '☂️' }, v: { word: 'Van', emoji: '🚐' },
+  w: { word: 'Watermelon', emoji: '🍉' }, x: { word: 'Fox', emoji: '🦊' },
+  y: { word: 'Yoyo', emoji: '🪀' }, z: { word: 'Zebra', emoji: '🦓' },
+}
+
+/** 例単語を返す（大文字でも小文字キーで引く） */
+export function abcExample(letter: string): AbcExample {
+  return ABC_EXAMPLES[letter.toLowerCase()] ?? { word: letter.toUpperCase(), emoji: '🔤' }
 }
 
 /**
@@ -111,6 +140,34 @@ export const SPELL_WORDS: Record<DifficultyLevel, SpellSpec[]> = {
     { word: 'grape', wrong: ['grap', 'graip', 'grabe', 'grepe'] },
     { word: 'bread', wrong: ['bred', 'braid', 'bredd', 'braed'] },
   ],
+  4: [
+    { word: 'yellow', wrong: ['yelow', 'yello', 'jellow', 'yollow', 'yelloe'] },
+    { word: 'orange', wrong: ['orenge', 'orang', 'oranje', 'ornge', 'orande'] },
+    { word: 'monkey', wrong: ['munkey', 'monki', 'monky', 'mankey', 'monkky'] },
+    { word: 'rabbit', wrong: ['rabit', 'rabbet', 'rebbit', 'rabbut', 'rabbot'] },
+    { word: 'flower', wrong: ['flowar', 'flauer', 'flowe', 'flowor', 'floer'] },
+    { word: 'pencil', wrong: ['pensil', 'pencl', 'pencal', 'pensel', 'pincil'] },
+    { word: 'purple', wrong: ['purpel', 'purpl', 'perple', 'purpul', 'purbple'] },
+    { word: 'banana', wrong: ['bananna', 'banan', 'banene', 'banaba', 'bnana'] },
+    { word: 'garden', wrong: ['gardan', 'gaeden', 'gardn', 'gorden', 'gardin'] },
+    { word: 'window', wrong: ['windo', 'windou', 'winbow', 'wandow', 'windw'] },
+    { word: 'basket', wrong: ['basikt', 'baskit', 'baskt', 'bascket', 'bosket'] },
+    { word: 'rocket', wrong: ['roket', 'rockt', 'rockit', 'rokcet', 'rocet'] },
+  ],
+  5: [
+    { word: 'rainbow', wrong: ['ranbow', 'rainbo', 'raimbow', 'rainbou', 'reinbow'] },
+    { word: 'penguin', wrong: ['pengin', 'penquin', 'pengwin', 'penguen', 'pinguin'] },
+    { word: 'dolphin', wrong: ['dolfin', 'dholphin', 'dolphn', 'dolpin', 'dolphen'] },
+    { word: 'giraffe', wrong: ['girafe', 'jiraffe', 'giraff', 'giraffee', 'geraffe'] },
+    { word: 'morning', wrong: ['moning', 'mornng', 'morninng', 'mourning', 'morneng'] },
+    { word: 'kitchen', wrong: ['kichen', 'kitchn', 'kitchin', 'kittchen', 'ketchen'] },
+    { word: 'blanket', wrong: ['blankt', 'blancket', 'blankit', 'blannket', 'blankeet'] },
+    { word: 'cupcake', wrong: ['cupcak', 'cubcake', 'cupckae', 'cupcaek', 'cupcayk'] },
+    { word: 'balloon', wrong: ['baloon', 'ballon', 'balloonn', 'baloon', 'balloun'] },
+    { word: 'popcorn', wrong: ['popcon', 'popcrn', 'popkorn', 'popcorne', 'poppcorn'] },
+    { word: 'octopus', wrong: ['octopos', 'octapus', 'octopuss', 'octpus', 'ocktopus'] },
+    { word: 'pumpkin', wrong: ['pumkin', 'punpkin', 'pumpkn', 'pumpken', 'pumpkinn'] },
+  ],
 }
 
 // ============================================================ ③ meaning（英語→意味）
@@ -129,71 +186,99 @@ export interface MeaningSpec {
  * 誤答は同じ genre から選ぶ（ランダムな無関係語にしない＝歯ごたえと学習効果）。
  * 難易度が上がるほど語が増え、選択肢も増える。
  */
+const MEAN_L1: MeaningSpec[] = [
+  // 動物・くだもの・いろ（いちばん身近な語）
+  { word: 'cat', meaning: 'ねこ', genre: 'animal' },
+  { word: 'dog', meaning: 'いぬ', genre: 'animal' },
+  { word: 'fish', meaning: 'さかな', genre: 'animal' },
+  { word: 'bird', meaning: 'とり', genre: 'animal' },
+  { word: 'apple', meaning: 'りんご', genre: 'fruit' },
+  { word: 'banana', meaning: 'ばなな', genre: 'fruit' },
+  { word: 'orange', meaning: 'みかん', genre: 'fruit' },
+  { word: 'red', meaning: 'あか', genre: 'color' },
+  { word: 'blue', meaning: 'あお', genre: 'color' },
+]
+const MEAN_L2: MeaningSpec[] = [
+  { word: 'cat', meaning: 'ねこ', genre: 'animal' },
+  { word: 'dog', meaning: 'いぬ', genre: 'animal' },
+  { word: 'bird', meaning: 'とり', genre: 'animal' },
+  { word: 'bear', meaning: 'くま', genre: 'animal' },
+  { word: 'lion', meaning: 'らいおん', genre: 'animal' },
+  { word: 'pig', meaning: 'ぶた', genre: 'animal' },
+  { word: 'apple', meaning: 'りんご', genre: 'fruit' },
+  { word: 'grape', meaning: 'ぶどう', genre: 'fruit' },
+  { word: 'lemon', meaning: 'れもん', genre: 'fruit' },
+  { word: 'orange', meaning: 'みかん', genre: 'fruit' },
+  { word: 'red', meaning: 'あか', genre: 'color' },
+  { word: 'blue', meaning: 'あお', genre: 'color' },
+  { word: 'green', meaning: 'みどり', genre: 'color' },
+  { word: 'yellow', meaning: 'きいろ', genre: 'color' },
+  { word: 'star', meaning: 'ほし', genre: 'nature' },
+  { word: 'moon', meaning: 'つき', genre: 'nature' },
+  { word: 'sun', meaning: 'たいよう', genre: 'nature' },
+]
+const MEAN_L3: MeaningSpec[] = [
+  { word: 'cat', meaning: 'ねこ', genre: 'animal' },
+  { word: 'dog', meaning: 'いぬ', genre: 'animal' },
+  { word: 'bird', meaning: 'とり', genre: 'animal' },
+  { word: 'bear', meaning: 'くま', genre: 'animal' },
+  { word: 'lion', meaning: 'らいおん', genre: 'animal' },
+  { word: 'pig', meaning: 'ぶた', genre: 'animal' },
+  { word: 'cow', meaning: 'うし', genre: 'animal' },
+  { word: 'duck', meaning: 'あひる', genre: 'animal' },
+  { word: 'frog', meaning: 'かえる', genre: 'animal' },
+  { word: 'apple', meaning: 'りんご', genre: 'fruit' },
+  { word: 'grape', meaning: 'ぶどう', genre: 'fruit' },
+  { word: 'lemon', meaning: 'れもん', genre: 'fruit' },
+  { word: 'peach', meaning: 'もも', genre: 'fruit' },
+  { word: 'melon', meaning: 'めろん', genre: 'fruit' },
+  { word: 'car', meaning: 'くるま', genre: 'vehicle' },
+  { word: 'bus', meaning: 'ばす', genre: 'vehicle' },
+  { word: 'boat', meaning: 'ふね', genre: 'vehicle' },
+  { word: 'plane', meaning: 'ひこうき', genre: 'vehicle' },
+  { word: 'star', meaning: 'ほし', genre: 'nature' },
+  { word: 'moon', meaning: 'つき', genre: 'nature' },
+  { word: 'sun', meaning: 'たいよう', genre: 'nature' },
+  { word: 'tree', meaning: 'き', genre: 'nature' },
+  { word: 'snow', meaning: 'ゆき', genre: 'nature' },
+  { word: 'red', meaning: 'あか', genre: 'color' },
+  { word: 'blue', meaning: 'あお', genre: 'color' },
+  { word: 'green', meaning: 'みどり', genre: 'color' },
+  { word: 'black', meaning: 'くろ', genre: 'color' },
+  { word: 'white', meaning: 'しろ', genre: 'color' },
+  { word: 'milk', meaning: 'みるく', genre: 'food' },
+  { word: 'egg', meaning: 'たまご', genre: 'food' },
+  { word: 'cake', meaning: 'けーき', genre: 'food' },
+]
+// 難易度4で増える語（難易度3に積み増し＝範囲が広がる）
+const MEAN_L4_EXTRA: MeaningSpec[] = [
+  { word: 'tiger', meaning: 'とら', genre: 'animal' },
+  { word: 'rabbit', meaning: 'うさぎ', genre: 'animal' },
+  { word: 'bike', meaning: 'じてんしゃ', genre: 'vehicle' },
+  { word: 'cloud', meaning: 'くも', genre: 'nature' },
+  { word: 'pink', meaning: 'ぴんく', genre: 'color' },
+  { word: 'rice', meaning: 'ごはん', genre: 'food' },
+]
+// 難易度5でさらに増える語
+const MEAN_L5_EXTRA: MeaningSpec[] = [
+  { word: 'mouse', meaning: 'ねずみ', genre: 'animal' },
+  { word: 'sheep', meaning: 'ひつじ', genre: 'animal' },
+  { word: 'monkey', meaning: 'さる', genre: 'animal' },
+  { word: 'penguin', meaning: 'ぺんぎん', genre: 'animal' },
+  { word: 'cherry', meaning: 'さくらんぼ', genre: 'fruit' },
+  { word: 'rainbow', meaning: 'にじ', genre: 'nature' },
+  { word: 'rain', meaning: 'あめ', genre: 'nature' },
+  { word: 'brown', meaning: 'ちゃいろ', genre: 'color' },
+  { word: 'purple', meaning: 'むらさき', genre: 'color' },
+  { word: 'soup', meaning: 'すーぷ', genre: 'food' },
+]
+
 export const MEANING_WORDS: Record<DifficultyLevel, MeaningSpec[]> = {
-  1: [
-    // 動物・くだもの・いろ（いちばん身近な語）
-    { word: 'cat', meaning: 'ねこ', genre: 'animal' },
-    { word: 'dog', meaning: 'いぬ', genre: 'animal' },
-    { word: 'fish', meaning: 'さかな', genre: 'animal' },
-    { word: 'bird', meaning: 'とり', genre: 'animal' },
-    { word: 'apple', meaning: 'りんご', genre: 'fruit' },
-    { word: 'banana', meaning: 'ばなな', genre: 'fruit' },
-    { word: 'orange', meaning: 'みかん', genre: 'fruit' },
-    { word: 'red', meaning: 'あか', genre: 'color' },
-    { word: 'blue', meaning: 'あお', genre: 'color' },
-  ],
-  2: [
-    { word: 'cat', meaning: 'ねこ', genre: 'animal' },
-    { word: 'dog', meaning: 'いぬ', genre: 'animal' },
-    { word: 'bird', meaning: 'とり', genre: 'animal' },
-    { word: 'bear', meaning: 'くま', genre: 'animal' },
-    { word: 'lion', meaning: 'らいおん', genre: 'animal' },
-    { word: 'pig', meaning: 'ぶた', genre: 'animal' },
-    { word: 'apple', meaning: 'りんご', genre: 'fruit' },
-    { word: 'grape', meaning: 'ぶどう', genre: 'fruit' },
-    { word: 'lemon', meaning: 'れもん', genre: 'fruit' },
-    { word: 'orange', meaning: 'みかん', genre: 'fruit' },
-    { word: 'red', meaning: 'あか', genre: 'color' },
-    { word: 'blue', meaning: 'あお', genre: 'color' },
-    { word: 'green', meaning: 'みどり', genre: 'color' },
-    { word: 'yellow', meaning: 'きいろ', genre: 'color' },
-    { word: 'star', meaning: 'ほし', genre: 'nature' },
-    { word: 'moon', meaning: 'つき', genre: 'nature' },
-    { word: 'sun', meaning: 'たいよう', genre: 'nature' },
-  ],
-  3: [
-    { word: 'cat', meaning: 'ねこ', genre: 'animal' },
-    { word: 'dog', meaning: 'いぬ', genre: 'animal' },
-    { word: 'bird', meaning: 'とり', genre: 'animal' },
-    { word: 'bear', meaning: 'くま', genre: 'animal' },
-    { word: 'lion', meaning: 'らいおん', genre: 'animal' },
-    { word: 'pig', meaning: 'ぶた', genre: 'animal' },
-    { word: 'cow', meaning: 'うし', genre: 'animal' },
-    { word: 'duck', meaning: 'あひる', genre: 'animal' },
-    { word: 'frog', meaning: 'かえる', genre: 'animal' },
-    { word: 'apple', meaning: 'りんご', genre: 'fruit' },
-    { word: 'grape', meaning: 'ぶどう', genre: 'fruit' },
-    { word: 'lemon', meaning: 'れもん', genre: 'fruit' },
-    { word: 'peach', meaning: 'もも', genre: 'fruit' },
-    { word: 'melon', meaning: 'めろん', genre: 'fruit' },
-    { word: 'car', meaning: 'くるま', genre: 'vehicle' },
-    { word: 'bus', meaning: 'ばす', genre: 'vehicle' },
-    { word: 'boat', meaning: 'ふね', genre: 'vehicle' },
-    { word: 'plane', meaning: 'ひこうき', genre: 'vehicle' },
-    { word: 'star', meaning: 'ほし', genre: 'nature' },
-    { word: 'moon', meaning: 'つき', genre: 'nature' },
-    { word: 'sun', meaning: 'たいよう', genre: 'nature' },
-    { word: 'tree', meaning: 'き', genre: 'nature' },
-    { word: 'snow', meaning: 'ゆき', genre: 'nature' },
-    { word: 'red', meaning: 'あか', genre: 'color' },
-    { word: 'blue', meaning: 'あお', genre: 'color' },
-    { word: 'green', meaning: 'みどり', genre: 'color' },
-    { word: 'black', meaning: 'くろ', genre: 'color' },
-    { word: 'white', meaning: 'しろ', genre: 'color' },
-    { word: 'milk', meaning: 'みるく', genre: 'food' },
-    { word: 'egg', meaning: 'たまご', genre: 'food' },
-    { word: 'cake', meaning: 'けーき', genre: 'food' },
-  ],
+  1: MEAN_L1,
+  2: MEAN_L2,
+  3: MEAN_L3,
+  4: [...MEAN_L3, ...MEAN_L4_EXTRA],
+  5: [...MEAN_L3, ...MEAN_L4_EXTRA, ...MEAN_L5_EXTRA],
 }
 
 /** その難易度の meaning 問題から、同じ genre の別の意味を誤答候補として集める */

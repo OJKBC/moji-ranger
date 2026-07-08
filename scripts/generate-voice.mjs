@@ -36,8 +36,9 @@ const KATA = [
   'マ', 'ミ', 'ム', 'メ', 'モ', 'ヤ', 'ユ', 'ヨ', 'ラ', 'リ',
   'ル', 'レ', 'ロ', 'ワ', 'ヲ', 'ン',
 ]
-/** 数字の読み（に・ご は文字クリップと同音なので共用） */
-const DIGITS = ['いち', 'さん', 'よん', 'ろく', 'なな', 'はち', 'きゅう', 'じゅう']
+/** 数字の読み（さんすう用。に・ご も含める＝清音46には濁音のごが無いため明示）。
+ *  11〜18 は「じゅう＋一の位」をスペース連結で読むので、単体クリップはこの10個で足りる。 */
+const DIGITS = ['いち', 'に', 'さん', 'よん', 'ご', 'ろく', 'なな', 'はち', 'きゅう', 'じゅう']
 
 // ---- データファイルから自動抽出（追記したらデータ側を直すだけでクリップに反映される）----
 const readFile = rel => fs.readFileSync(path.join(root, '..', rel), 'utf8')
@@ -203,3 +204,52 @@ export const EN_VOICE_CLIPS: Record<string, string> = ${JSON.stringify(enManifes
 `
 fs.writeFileSync(MANIFEST_EN, tsEn)
 console.log(`${Object.keys(enManifest).length} en clips → voiceManifestEn.ts generated`)
+
+// ---- ㉚「A for Apple」方式のアルファベットクリップ（例単語つき・ゆっくりはっきり）----
+const MANIFEST_ABC = path.join(root, '..', 'src', 'audio', 'voiceManifestAbc.ts')
+// english.ts の ABC_EXAMPLES（letter: { word: 'Apple' ... }）を解析
+const abcExamples = {}
+for (const m of englishSrc.matchAll(/([a-z]):\s*\{\s*word:\s*'([^']+)'/g)) abcExamples[m[1]] = m[2]
+const abcJobs = EN_LETTERS.map(c => ({
+  token: c,
+  // 「レターネーム＋for＋例単語」。en-US 合成の弱点（N/M・B/D 等）を例単語で必ず区別できるように
+  text: `${c.toUpperCase()} for ${abcExamples[c] ?? c.toUpperCase()}.`,
+  rate: '-18%',
+}))
+const abcManifest = {}
+try {
+  const abcTts = new MsEdgeTTS()
+  await abcTts.setMetadata('en-US-AnaNeural', OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3)
+  for (const { token, text, rate } of abcJobs) {
+    const file = `en-abc-${token}.mp3`
+    const out = path.join(DST, file)
+    if (!fs.existsSync(out)) {
+      const { audioStream } = await abcTts.toStream(text, { rate })
+      const chunks = []
+      await new Promise((resolve, reject) => {
+        audioStream.on('data', c => chunks.push(c))
+        audioStream.on('end', resolve)
+        audioStream.on('error', reject)
+      })
+      fs.writeFileSync(out, Buffer.concat(chunks))
+      process.stdout.write(`${token} `)
+    }
+    abcManifest[token] = file
+  }
+  console.log('')
+} catch (e) {
+  console.warn('abcクリップ生成をスキップ:', e?.message ?? e)
+  for (const { token } of abcJobs) {
+    if (fs.existsSync(path.join(DST, `en-abc-${token}.mp3`))) abcManifest[token] = `en-abc-${token}.mp3`
+  }
+}
+const tsAbc = `/**
+ * 「A for Apple」方式のアルファベット読み上げクリップ（㉚）。
+ * scripts/generate-voice.mjs が自動生成する（手で編集しない）。
+ * キー=小文字のアルファベット → public/assets/voice/ 内のファイル名（例: en-abc-a.mp3）。
+ * 空のときは Web Speech API（en-US）で「letter for example」を読み上げるフォールバックになる。
+ */
+export const EN_ABC_CLIPS: Record<string, string> = ${JSON.stringify(abcManifest, null, 2)}
+`
+fs.writeFileSync(MANIFEST_ABC, tsAbc)
+console.log(`${Object.keys(abcManifest).length} abc clips → voiceManifestAbc.ts generated`)

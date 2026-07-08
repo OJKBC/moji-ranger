@@ -7,6 +7,7 @@ import { Zukan } from './Zukan'
 import { isStageUnlocked, loadProgress } from './store/progress'
 import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
+import { MAX_DIFFICULTY } from './types'
 import type { DifficultyLevel, Stage, StageResult } from './types'
 import bgUrl from './assets/bg.jpg'
 
@@ -29,7 +30,7 @@ interface StageFailed {
 function nextChallengeOf(result: StageResult): { stage: Stage; level: DifficultyLevel } | null {
   const stage = STAGES.find(s => s.id === result.stageId)
   if (!stage) return null
-  if (result.difficulty < 3) {
+  if (result.difficulty < MAX_DIFFICULTY) {
     return { stage, level: (result.difficulty + 1) as DifficultyLevel }
   }
   const progress = loadProgress()

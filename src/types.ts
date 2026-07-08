@@ -106,8 +106,10 @@ export interface MathProblem {
   choices: string[]
 }
 
-/** ステージ内の難易度段階。1→2→3 の順に解放される */
-export type DifficultyLevel = 1 | 2 | 3
+/** ステージ内の難易度段階。1→2→3→4→5 の順に解放される */
+export type DifficultyLevel = 1 | 2 | 3 | 4 | 5
+/** 最高難易度（今後さらに増やすときはここと data/difficulty.ts を広げる） */
+export const MAX_DIFFICULTY = 5
 
 /** さんすうバトルの難易度別出題パラメータ（毎ラウンドのランダム生成に使う） */
 export interface MathLevelSpec {

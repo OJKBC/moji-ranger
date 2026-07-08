@@ -3,7 +3,8 @@ import type { DifficultyLevel } from '../types'
 /**
  * もじもじアトラクション（sequence モード）の単語プール。
  * 単語を増やすときは、この配列に1行追加するだけでよい。
- * 難易度は文字数で決まる: 難易度1=2文字 / 難易度2=3文字 / 難易度3=4文字。
+ * 難易度は文字数で決まる: 1=2文字 / 2=3文字 / 3=4文字 / 4=5文字 / 5=6文字。
+ * ※ もじもじは1文字ずつ順に撃つため、拗音・促音（ゃゅょっ）を含まない語だけにする。
  */
 export interface WordSpec {
   word: string
@@ -71,6 +72,35 @@ export const WORDS: WordSpec[] = [
   { word: 'たいよう', celebration: '☀️' },
   { word: 'おにぎり', celebration: '🍙' },
   { word: 'たいやき', celebration: '🐟' },
+  // 5文字（難易度4）＝身近な生き物・あいさつ・もの（拗促音なし）
+  { word: 'だんごむし', celebration: '🐛' },
+  { word: 'かたつむり', celebration: '🐌' },
+  { word: 'かぶとむし', celebration: '🪲' },
+  { word: 'こいのぼり', celebration: '🎏' },
+  { word: 'さくらんぼ', celebration: '🍒' },
+  { word: 'ぬいぐるみ', celebration: '🧸' },
+  { word: 'すべりだい', celebration: '🛝' },
+  { word: 'ありがとう', celebration: '😊' },
+  { word: 'こんにちは', celebration: '👋' },
+  { word: 'おかあさん', celebration: '👩' },
+  { word: 'おとうさん', celebration: '👨' },
+  { word: 'たからもの', celebration: '💎' },
+  { word: 'れいぞうこ', celebration: '🧊' },
+  { word: 'みずたまり', celebration: '💧' },
+  { word: 'せんぷうき', celebration: '🌀' },
+  // 6文字（難易度5）＝身近な生き物・のりもの・おみせ（拗促音なし）
+  { word: 'とうもろこし', celebration: '🌽' },
+  { word: 'しんかんせん', celebration: '🚄' },
+  { word: 'てんとうむし', celebration: '🐞' },
+  { word: 'くわがたむし', celebration: '🪲' },
+  { word: 'どうぶつえん', celebration: '🦁' },
+  { word: 'すいぞくかん', celebration: '🐬' },
+  { word: 'おかしやさん', celebration: '🍬' },
+  { word: 'さかなやさん', celebration: '🐟' },
+  { word: 'おはなやさん', celebration: '💐' },
+  { word: 'けいさつかん', celebration: '👮' },
+  { word: 'おまわりさん', celebration: '🚓' },
+  { word: 'たからさがし', celebration: '🗺️' },
 ]
 
 /** 難易度に応じた文字数の単語だけを返す */

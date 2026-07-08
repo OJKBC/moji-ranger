@@ -25,6 +25,8 @@ export const MONSTER_TABLE: MonsterSpawnTable = {
     1: { weak: 1, strong: 0 }, // 難易度1: よわいのみ
     2: { weak: 0.7, strong: 0.3 }, // 難易度2: よわい中心＋ときどきつよい
     3: { weak: 0.25, strong: 0.75 }, // 難易度3: つよい中心
+    4: { weak: 0.15, strong: 0.85 }, // 難易度4: ほぼつよい
+    5: { weak: 0.05, strong: 0.95 }, // 難易度5: つよいばかり
   },
   purifySteps: { weak: [1, 2], strong: [2, 3] },
   bossWeights: { uncaptured: 1.0, captured: 0.2 },

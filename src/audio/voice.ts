@@ -14,6 +14,7 @@
 import { sfx } from './sfx'
 import { VOICE_CLIPS } from './voiceManifest'
 import { EN_VOICE_CLIPS } from './voiceManifestEn'
+import { EN_ABC_CLIPS } from './voiceManifestAbc'
 
 class VoicePlayer {
   readonly supported = typeof window !== 'undefined' && 'speechSynthesis' in window
@@ -46,7 +47,8 @@ class VoicePlayer {
   private warm(): void {
     if (this.warmed) return
     this.warmed = true
-    for (const file of [...Object.values(VOICE_CLIPS), ...Object.values(EN_VOICE_CLIPS)]) {
+    const all = [...Object.values(VOICE_CLIPS), ...Object.values(EN_VOICE_CLIPS), ...Object.values(EN_ABC_CLIPS)]
+    for (const file of all) {
       void fetch(`${import.meta.env.BASE_URL}assets/voice/${file}`).catch(() => undefined)
     }
   }
@@ -141,6 +143,29 @@ class VoicePlayer {
     // フォールバック: en-US の音声合成（端末に英語音声があるとき）
     if (this.supported && this.enVoice) {
       return this.speakTts(text, { lang: 'en-US', rate: 0.8, pitch: 1.1 })
+    }
+    return false
+  }
+
+  /**
+   * ㉚「A for Apple」方式でアルファベットを読み上げる。
+   * 事前生成した「letter for example」クリップ（ゆっくり・はっきり）を再生し、
+   * 無ければ en-US 音声合成で `${letter} for ${example}` を読む（rate 低め）。
+   * N/M・B/D・F/S のような近い音でも、例単語で必ず区別できる。
+   * TODO: 将来 録音音声を EN_ABC_CLIPS に差し替えれば、このまま反映される。
+   * @returns 音が出せるか（false のときは視覚フォールバック＝例単語カードに任せる）
+   */
+  speakAbc(letter: string, example: string): boolean {
+    if (!this.enabled) return false
+    const key = letter.trim().toLowerCase()
+    const graph = sfx.getGraph()
+    const file = EN_ABC_CLIPS[key]
+    if (graph && file) {
+      void this.playClips(graph.ctx, graph.out, [file])
+      return true
+    }
+    if (this.supported && this.enVoice) {
+      return this.speakTts(`${letter} for ${example}`, { lang: 'en-US', rate: 0.6, pitch: 1.05 })
     }
     return false
   }

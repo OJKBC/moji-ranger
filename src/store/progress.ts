@@ -1,4 +1,5 @@
 import { idbReadNewest, idbWrite } from './persistence'
+import { MAX_DIFFICULTY } from '../types'
 import type { DifficultyLevel, LetterStats, PlayerProgress, Stage, TargetKind } from '../types'
 
 const STORAGE_KEY = 'moji-ranger-progress'
@@ -211,9 +212,9 @@ export function clearedLevelOf(progress: PlayerProgress, stageId: string): numbe
   return progress.stageLevels[stageId] ?? 0
 }
 
-/** そのステージで次に挑戦する難易度（全クリア後は3で遊び続けられる） */
+/** そのステージで次に挑戦する難易度（全クリア後は最高難易度で遊び続けられる） */
 export function nextLevelOf(progress: PlayerProgress, stageId: string): DifficultyLevel {
-  return Math.min(3, clearedLevelOf(progress, stageId) + 1) as DifficultyLevel
+  return Math.min(MAX_DIFFICULTY, clearedLevelOf(progress, stageId) + 1) as DifficultyLevel
 }
 
 // ---- なかまボール（捕獲）関連 ----

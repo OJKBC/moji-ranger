@@ -174,6 +174,8 @@ export const STAGES: Stage[] = [
       1: { ops: ['+'], maxAnswer: 6 },
       2: { ops: ['+'], maxAnswer: 10 },
       3: { ops: ['+', '-'], maxAnswer: 10 },
+      4: { ops: ['+', '-'], maxAnswer: 14 }, // くり上がり・くり下がりが入る範囲
+      5: { ops: ['+', '-'], maxAnswer: 18 }, // 大きめの数（2桁がらみ）
     },
     correctKind: 'number',
     distractors: [],

@@ -427,17 +427,19 @@ body {
 
 .stage-levels {
   display: flex;
-  gap: 8px;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .level-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 25px;
+  height: 25px;
   border-radius: 999px;
-  font-size: 16px;
+  font-size: 13px;
   font-weight: bold;
   color: rgba(60, 60, 100, 0.45);
   background: rgba(60, 60, 100, 0.12);

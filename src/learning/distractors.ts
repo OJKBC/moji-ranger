@@ -123,6 +123,8 @@ export interface DistractorOptions {
    * 既存 letterStats を参照し、固定ペアの羅列にしない。
    */
   preferWeakPairs?: boolean
+  /** 混ぜる「形が似た文字」の最大数（上の難易度ほど多め。既定 2） */
+  maxConfusables?: number
   /** 選択肢に出さない文字（例: 単語つくりでは単語の構成文字すべて） */
   exclude?: string[]
 }
@@ -146,8 +148,9 @@ export function pickDistractors(target: string, count: number, opts: DistractorO
         (a, b) => weaknessScore(b, stats) + Math.random() - (weaknessScore(a, stats) + Math.random()),
       )
     }
+    const maxConf = opts.maxConfusables ?? 2
     for (const c of candidates) {
-      if (picked.length >= Math.min(2, count)) break
+      if (picked.length >= Math.min(maxConf, count)) break
       if (!picked.includes(c)) picked.push(c)
     }
   }

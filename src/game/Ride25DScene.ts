@@ -7,8 +7,10 @@ import { MONSTER_FILES } from './monsterManifest'
 import { MONSTER_TABLE } from '../data/monsters'
 import { wordsForLevel } from '../data/words'
 import type { WordSpec } from '../data/words'
-import { ABC_CONFUSABLES, abcLetters, MEANING_WORDS, meaningDistractors, SPELL_WORDS } from '../data/english'
+import { ABC_CONFUSABLES, abcExample, abcLetters, MEANING_WORDS, meaningDistractors, SPELL_WORDS } from '../data/english'
 import type { MeaningSpec, SpellSpec } from '../data/english'
+import { MAX_CHOICES, tuningFor } from '../data/difficulty'
+import type { DifficultyTuning } from '../data/difficulty'
 import { BALLS, PITY_FAILS, rollBall } from '../data/balls'
 import type { BallSpec } from '../data/balls'
 import { monsterName } from '../data/monsterNames'
@@ -25,10 +27,15 @@ export const GAME_H = 640
 
 const FONT = '"Hiragino Maru Gothic ProN", "BIZ UDPGothic", "Yu Gothic UI", "Meiryo", sans-serif'
 const BUBBLE_COLORS = [0xffc2d4, 0xaddcff, 0xfff2ad, 0xc9f2b8, 0xe3ccff]
-/** 数字の読み（さんすうバトルの読み上げ用） */
+/**
+ * 数字の読み（さんすうバトルの読み上げ用）。
+ * 11〜18 は「じゅう＋一の位」をスペースで区切り、既存のクリップ（じゅう・いち…）を連結して読む。
+ */
 const DIGIT_READING: Record<string, string> = {
   '1': 'いち', '2': 'に', '3': 'さん', '4': 'よん', '5': 'ご',
   '6': 'ろく', '7': 'なな', '8': 'はち', '9': 'きゅう', '10': 'じゅう',
+  '11': 'じゅう いち', '12': 'じゅう に', '13': 'じゅう さん', '14': 'じゅう よん',
+  '15': 'じゅう ご', '16': 'じゅう ろく', '17': 'じゅう なな', '18': 'じゅう はち',
 }
 const SHOT_COOLDOWN_MS = 110
 /** 強めのオートエイム（4〜6歳: 学習タスクは「正しい文字を選ぶ」こと） */
@@ -94,6 +101,8 @@ export class Ride25DScene extends Phaser.Scene {
    * 学習記録・オートエイム・撃ち逃し非記録などのルールは全難易度共通。
    */
   private level: DifficultyLevel
+  /** 難易度チューニング（選択肢数・プール開放・テンポ・似た文字の量など。data/difficulty.ts） */
+  private tune!: DifficultyTuning
   private battle!: StageBattle
 
   // カメラリグ
@@ -149,6 +158,8 @@ export class Ride25DScene extends Phaser.Scene {
   private currentEnWord = ''
   /** math: 直前に出した式（同じ式の連続を避ける） */
   private lastMathQuestion = ''
+  /** abc: 「A for Apple」の例単語カード（㉚。聞き取り補助＝音が不明瞭でも区別できる） */
+  private abcHint: Phaser.GameObjects.Container | null = null
 
   // モンスターの抽選（グループ・浄化回数は data/monsters.ts のテーブルで決まる）
   private monsterKeys: { weak: string[]; strong: string[]; boss: string[] } = { weak: [], strong: [], boss: [] }
@@ -313,16 +324,18 @@ export class Ride25DScene extends Phaser.Scene {
       letterPool: [this.stageData.correctAnswer ?? 'あ'],
       poolStart: 5,
     }
+    // 難易度チューニングを引く（数値は data/difficulty.ts に集約。5段階以上も表を広げるだけ）
+    this.tune = tuningFor(this.level)
     // 難易度によるバトル定義の上書き（元データは変更しない）
     this.battle = {
       ...base,
-      // Lv3: 選択肢を1つ増やす（最大6・アーチ配置は選択肢数に追従）
-      choiceCount: this.level >= 3 ? Math.min(6, base.choiceCount + 1) : base.choiceCount,
-      // Lv2以上: 出題プールを広めに開放（似た文字ペアに早く出会える）
-      poolStart: this.level >= 2 ? Math.min(base.letterPool.length, base.poolStart + 3) : base.poolStart,
+      // 上の難易度ほど選択肢を増やす（最大 MAX_CHOICES・アーチ配置は選択肢数に追従）
+      choiceCount: Math.min(MAX_CHOICES, base.choiceCount + this.tune.choiceBonus),
+      // 上の難易度ほど出題プールを広めに開放（似た文字ペアに早く出会える）
+      poolStart: Math.min(base.letterPool.length, base.poolStart + this.tune.poolBonus),
     }
-    // Lv3: テンポをわずかに上げる（巡航速度 約15%アップ）
-    if (this.level >= 3) this.cruiseSpeed = Math.round(this.cruiseSpeed * 1.15)
+    // 上の難易度ほどテンポを上げる（巡航速度アップ）
+    this.cruiseSpeed = Math.round(this.cruiseSpeed * this.tune.speedMul)
 
     this.stageStartAt = this.time.now
     this.makeTextures()
@@ -716,7 +729,7 @@ export class Ride25DScene extends Phaser.Scene {
     let choiceCount = this.battle.choiceCount
     if (attempts >= 3 && accuracy < 0.7) choiceCount = Math.max(3, choiceCount - 1)
     // Lv2以上は似た文字を常に混ぜる。Lv1は従来どおり正答率が高いときだけ
-    const useConfusables = this.level >= 2 || (attempts >= 3 && accuracy > 0.85)
+    const useConfusables = this.tune.useConfusables || (attempts >= 3 && accuracy > 0.85)
 
     // 「今回狙う文字」は音だけで伝える（文字を見せると答えが分かってしまう）
     this.announceTarget(this.currentTarget)
@@ -724,10 +737,11 @@ export class Ride25DScene extends Phaser.Scene {
     const distractors = pickDistractors(this.currentTarget, choiceCount - 1, {
       kind: this.currentKind,
       useConfusables,
-      preferWeakPairs: this.level >= 2, // 苦手なペアを優先（固定羅列にしない）
+      preferWeakPairs: this.tune.useConfusables, // 苦手なペアを優先（固定羅列にしない）
+      maxConfusables: this.tune.maxConfusables, // 上の難易度ほど似た文字を多めに
     })
     const labels = Phaser.Utils.Array.Shuffle([this.currentTarget, ...distractors])
-    this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
+    this.time.delayedCall(this.tune.fastPrompt ? 340 : 420, () => {
       this.spawnBubbleArc(labels)
       recordSeen(this.currentTarget, this.currentKind)
       this.beginStepInput()
@@ -744,17 +758,18 @@ export class Ride25DScene extends Phaser.Scene {
     // 出題は単語をそのまま読むだけ（「しか」）。テンポ最優先で説明セリフは入れない。
     // どの文字を撃つかは音だけで伝える（文字を見せると同じ形を選ぶだけになってしまう）
     if (this.purifyStep === 0) {
-      // 単語の開始: 全文字＋まぎらわしい文字を一度に出す
-      const choiceCount = Math.max(seq.length + 1, this.battle.choiceCount)
-      const distractors = pickDistractors(seq[0], choiceCount - seq.length, {
+      // 単語の開始: 全文字＋まぎらわしい文字を一度に出す（長い単語でもリング上限8まで）
+      const choiceCount = Math.min(8, Math.max(seq.length + 1, this.battle.choiceCount))
+      const distractors = pickDistractors(seq[0], Math.max(1, choiceCount - seq.length), {
         kind: this.currentKind,
-        useConfusables: this.level >= 2,
-        preferWeakPairs: this.level >= 2,
+        useConfusables: this.tune.useConfusables,
+        preferWeakPairs: this.tune.useConfusables,
+        maxConfusables: this.tune.maxConfusables,
         exclude: seq,
       })
       const labels = Phaser.Utils.Array.Shuffle([...seq, ...distractors])
       voice.speak(`${this.currentWord}！`)
-      this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
+      this.time.delayedCall(this.tune.fastPrompt ? 340 : 420, () => {
         this.spawnBubbleArc(labels)
         for (const s of seq) recordSeen(s, this.currentKind)
         this.beginStepInput()
@@ -770,9 +785,10 @@ export class Ride25DScene extends Phaser.Scene {
     const spec = this.stageData.mathLevels?.[this.level]
     if (spec) {
       // 直前と同じ式が続かないよう、数問ぶんは引き直す（範囲が狭い難易度でも極力ばらす）
-      let prob = this.makeMathProblem(spec)
+      // 選択肢（ゲート）の数は難易度で増やす（data/difficulty.ts の mathChoices）
+      let prob = this.makeMathProblem(spec, this.tune.mathChoices)
       for (let i = 0; i < 6 && prob.question === this.lastMathQuestion; i++) {
-        prob = this.makeMathProblem(spec)
+        prob = this.makeMathProblem(spec, this.tune.mathChoices)
       }
       this.currentProblem = prob
       this.lastMathQuestion = prob.question
@@ -782,7 +798,7 @@ export class Ride25DScene extends Phaser.Scene {
     this.currentTarget = this.currentProblem.answer
     voice.speak(this.currentProblem.voicePrompt)
     const labels = Phaser.Utils.Array.Shuffle([...this.currentProblem.choices])
-    this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
+    this.time.delayedCall(this.tune.fastPrompt ? 340 : 420, () => {
       this.spawnBubbleArc(labels)
       recordSeen(this.currentProblem!.question, 'math')
       this.beginStepInput()
@@ -793,7 +809,7 @@ export class Ride25DScene extends Phaser.Scene {
    * 難易度パラメータ（演算種別・答えの最大値）から1問をランダム生成する。
    * 引き算は答えが必ず1以上（0以下になる問題は作らない）。
    */
-  private makeMathProblem(spec: MathLevelSpec): MathProblem {
+  private makeMathProblem(spec: MathLevelSpec, choiceCount = 3): MathProblem {
     const op = spec.ops[Phaser.Math.Between(0, spec.ops.length - 1)]
     let a: number, b: number, answer: number
     if (op === '+') {
@@ -807,9 +823,10 @@ export class Ride25DScene extends Phaser.Scene {
     }
     const read = (n: number) => DIGIT_READING[String(n)] ?? String(n)
     const choices = new Set<string>([String(answer)])
-    const maxChoice = Math.max(9, spec.maxAnswer) // 答えが10まであるとき10も誤答に出す（10=必ず正解のヒントを防ぐ）
-    for (let guard = 0; guard < 30 && choices.size < 3; guard++) {
-      const near = answer + Phaser.Math.Between(-2, 2)
+    // 答えの最大値まで誤答に出す（最大値=必ず正解、というヒントを防ぐ）
+    const maxChoice = Math.max(9, spec.maxAnswer)
+    for (let guard = 0; guard < 40 && choices.size < choiceCount; guard++) {
+      const near = answer + Phaser.Math.Between(-3, 3)
       if (near >= 1 && near <= maxChoice) choices.add(String(near))
     }
     return {
@@ -851,12 +868,55 @@ export class Ride25DScene extends Phaser.Scene {
     this.recentTargets.push(target)
 
     const labels = Phaser.Utils.Array.Shuffle([target, ...this.pickAbcDistractors(target, choiceCount - 1)])
-    this.announceEnglish(target, target)
-    this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
+    this.announceAbc(target)
+    this.time.delayedCall(this.tune.fastPrompt ? 340 : 420, () => {
       this.spawnBubbleArc(labels)
       recordSeen(target, 'english')
       this.beginStepInput()
     })
+  }
+
+  /**
+   * ㉚ abc の出題読み上げ＋例単語カード。
+   * 「レターネーム＋for＋例単語」で読み上げ（合成音の N/M・B/D 等のつぶれを例単語で補う）、
+   * 画面にも例単語（絵文字＋つづり・頭文字を強調）を表示して、音が不明瞭でも必ず区別できるようにする。
+   */
+  private announceAbc(letter: string): void {
+    const ex = abcExample(letter)
+    const spoke = voice.speakAbc(letter, ex.word)
+    this.showAbcHint(ex)
+    if (spoke) {
+      this.tweens.add({ targets: this.missionBar, scale: 1.07, duration: 200, yoyo: true, repeat: 1 })
+    }
+  }
+
+  /** 例単語カード（絵文字＋つづり・頭文字を金色で強調）を上部中央に出す */
+  private showAbcHint(ex: { word: string; emoji: string }): void {
+    this.clearAbcHint()
+    const emoji = this.add.text(0, 0, ex.emoji, { fontSize: '40px' }).setOrigin(0, 0.5)
+    const first = this.add.text(0, 0, ex.word.charAt(0), {
+      fontFamily: FONT, fontSize: '42px', fontStyle: 'bold', color: '#ffd94d',
+    }).setOrigin(0, 0.5).setStroke('#5a3d00', 6)
+    const rest = this.add.text(0, 0, ex.word.slice(1), {
+      fontFamily: FONT, fontSize: '34px', fontStyle: 'bold', color: '#ffffff',
+    }).setOrigin(0, 0.5).setStroke('#3a3a70', 5)
+    let x = 0
+    emoji.x = x; x += emoji.width + 10
+    first.x = x; x += first.width + 1
+    rest.x = x + 1; x += rest.width
+    const totalW = x
+    for (const t of [emoji, first, rest]) t.x -= totalW / 2
+    const bg = this.add.graphics()
+    bg.fillStyle(0x241a4a, 0.85)
+    bg.fillRoundedRect(-totalW / 2 - 20, -32, totalW + 40, 64, 22)
+    bg.lineStyle(3, 0xffd94d, 0.9)
+    bg.strokeRoundedRect(-totalW / 2 - 20, -32, totalW + 40, 64, 22)
+    this.abcHint = this.add.container(GAME_W / 2, 78, [bg, emoji, first, rest]).setDepth(8100).setScale(0)
+    this.tweens.add({ targets: this.abcHint, scale: 1, duration: 260, ease: 'Back.easeOut' })
+  }
+
+  private clearAbcHint(): void {
+    if (this.abcHint) { this.abcHint.destroy(); this.abcHint = null }
   }
 
   /** ② words: 単語を読み上げ、正しいスペルのバブルを選ぶ（誤答スペルはデータで用意） */
@@ -880,7 +940,7 @@ export class Ride25DScene extends Phaser.Scene {
     const wrongs = Phaser.Utils.Array.Shuffle([...spec.wrong]).slice(0, choiceCount - 1)
     const labels = Phaser.Utils.Array.Shuffle([spec.word, ...wrongs])
     this.announceEnglish(spec.word, spec.word)
-    this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
+    this.time.delayedCall(this.tune.fastPrompt ? 340 : 420, () => {
       this.spawnBubbleArc(labels)
       recordSeen(spec.word, 'english')
       this.beginStepInput()
@@ -907,7 +967,7 @@ export class Ride25DScene extends Phaser.Scene {
 
     const labels = Phaser.Utils.Array.Shuffle([spec.meaning, ...meaningDistractors(spec, this.level, choiceCount - 1)])
     this.announceEnglish(spec.word, spec.word)
-    this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
+    this.time.delayedCall(this.tune.fastPrompt ? 340 : 420, () => {
       this.spawnBubbleArc(labels)
       recordSeen(spec.word, 'english')
       this.beginStepInput()
@@ -940,23 +1000,32 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   /**
-   * abc の選択肢を選ぶ。形が紛らわしい文字（b/d・p/q 等）を優先し、
-   * 難易度3では大文字小文字の対応（例: b と B）も混ぜる。
+   * abc の選択肢を選ぶ。形が紛らわしい文字（b/d・p/q 等）を優先する。
+   *
+   * ㉙ 同じ文字の大文字・小文字（a と A 等）を同一問題に出さない。
+   *   → 「同じ文字か」は大文字小文字を無視して判定（toLowerCase 比較）し、
+   *     base（小文字表記）が重複しないように選ぶ。ターゲット自身の別表記も除外される。
+   *   → 難易度3〜5は大文字小文字が混在するが、選ばれる各文字の base は必ず異なるので、
+   *     どれを選んでも「その文字」が一意に決まり、正誤が成立する。
    */
   private pickAbcDistractors(target: string, count: number): string[] {
     const pool = abcLetters(this.level)
-    const excluded = new Set([target])
+    const targetBase = target.toLowerCase()
+    const usedBases = new Set([targetBase]) // ターゲットと同じ文字（大小どちらも）は出さない
     const picked: string[] = []
+    const tryAdd = (c: string) => {
+      const base = c.toLowerCase()
+      if (usedBases.has(base)) return false
+      picked.push(c); usedBases.add(base); return true
+    }
+    // まず形が紛らわしい文字を優先（難易度で本数を増やす）
     for (const c of ABC_CONFUSABLES[target] ?? []) {
-      if (picked.length >= Math.min(2, count)) break
-      if (pool.includes(c) && !excluded.has(c)) { picked.push(c); excluded.add(c) }
+      if (picked.length >= Math.min(this.tune.maxConfusables, count)) break
+      if (pool.includes(c)) tryAdd(c)
     }
-    if (this.level >= 3 && picked.length < count) {
-      const opp = target === target.toLowerCase() ? target.toUpperCase() : target.toLowerCase()
-      if (opp !== target && pool.includes(opp) && !excluded.has(opp)) { picked.push(opp); excluded.add(opp) }
-    }
-    const rest = Phaser.Utils.Array.Shuffle(pool.filter(l => !excluded.has(l)))
-    while (picked.length < count && rest.length) picked.push(rest.pop()!)
+    // 残りはプールからランダムに（base 重複は tryAdd がはじく）
+    const rest = Phaser.Utils.Array.Shuffle(pool.filter(l => !usedBases.has(l.toLowerCase())))
+    while (picked.length < count && rest.length) tryAdd(rest.pop()!)
     return picked
   }
 
@@ -1016,8 +1085,11 @@ export class Ride25DScene extends Phaser.Scene {
       4: [[-345, 245], [345, 245], [-235, 460], [235, 460]],
       5: [[-350, 235], [350, 235], [-270, 445], [270, 445], [0, 490]],
       6: [[-360, 225], [360, 225], [-295, 425], [295, 425], [-115, 490], [115, 490]],
+      // 7・8 は長い単語（もじもじ 5〜6文字）用。2〜3段で敵の周りを囲む
+      7: [[-370, 220], [370, 220], [-390, 375], [390, 375], [-235, 480], [235, 480], [0, 505]],
+      8: [[-370, 215], [370, 215], [-405, 355], [405, 355], [-300, 480], [300, 480], [-105, 505], [105, 505]],
     }
-    const ring = RING[labels.length] ?? RING[5]
+    const ring = RING[labels.length] ?? RING[6]
     // 単調にならないよう、たまに左右反転（配置は対称なので順序だけ変わる）
     const positions = (this.enemyIndex + this.purifyStep) % 2 === 1
       ? ring.map(([x, y]) => [-x, y] as [number, number])
@@ -1065,7 +1137,11 @@ export class Ride25DScene extends Phaser.Scene {
 
   private speakPrompt(): void {
     if (this.stageData.type === 'english') {
-      if (this.currentEnWord) this.announceEnglish(this.currentEnWord, this.currentEnWord)
+      if (this.stageData.enMode === 'letter' && this.currentEnWord) {
+        voice.speakAbc(this.currentEnWord, abcExample(this.currentEnWord).word)
+      } else if (this.currentEnWord) {
+        this.announceEnglish(this.currentEnWord, this.currentEnWord)
+      }
       return
     }
     if (this.stageData.mode === 'math') {
@@ -1124,6 +1200,7 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   private clearBubbles(): void {
+    this.clearAbcHint()
     for (const b of this.bubbles) {
       b.alive = false
       this.tweens.add({
@@ -1186,11 +1263,11 @@ export class Ride25DScene extends Phaser.Scene {
       this.showBigLetter(b.label)
     }
     this.clearBubbles()
-    // Lv3 はテンポをわずかに上げる
+    // 上の難易度ほどテンポをわずかに上げる
     if (wordDone) {
-      this.time.delayedCall(this.level >= 3 ? 600 : 700, () => this.completePurify())
+      this.time.delayedCall(this.tune.fastPrompt ? 600 : 700, () => this.completePurify())
     } else {
-      this.time.delayedCall(this.level >= 3 ? 850 : 1000, () => this.startPurifyStep())
+      this.time.delayedCall(this.tune.fastPrompt ? 850 : 1000, () => this.startPurifyStep())
     }
     this.updateDebugHook()
   }
@@ -1670,7 +1747,12 @@ export class Ride25DScene extends Phaser.Scene {
       } else if (this.stageData.type === 'english') {
         // 誤答スペル/文字は読まず、正解の英語をもう一度きかせる（叱らない）
         this.showGentleFeedback(b.container.x, b.container.y, 'ちがうみたい！ もういちど きいてね')
-        voice.speakEn(this.currentEnWord)
+        // 正解の英語をもう一度（abc は「A for Apple」で・それ以外は単語で）
+        if (this.stageData.enMode === 'letter') {
+          voice.speakAbc(this.currentEnWord, abcExample(this.currentEnWord).word)
+        } else {
+          voice.speakEn(this.currentEnWord)
+        }
       } else {
         this.showGentleFeedback(b.container.x, b.container.y, `これは「${b.label}」だよ`)
         voice.speak(`これは、${b.label}、だよ`)
