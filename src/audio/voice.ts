@@ -19,7 +19,8 @@ class VoicePlayer {
   private jaVoice: SpeechSynthesisVoice | null = null
   private initialized = false
   private warmed = false
-  private buffers = new Map<string, AudioBuffer>()
+  /** デコード済みクリップ（前後の無音をトリムした再生区間つき） */
+  private clips = new Map<string, { buf: AudioBuffer; offset: number; duration: number }>()
   private playing: AudioBufferSourceNode[] = []
   /** 発話セッション番号。新しい発話やキャンセルで進み、古い非同期再生を無効化する */
   private playSession = 0
@@ -67,15 +68,31 @@ class VoicePlayer {
     return text.split(/[、。！？!?\s]+/).filter(Boolean)
   }
 
-  private async loadBuffer(ctx: AudioContext, file: string): Promise<AudioBuffer | null> {
-    const cached = this.buffers.get(file)
+  /** クリップ前後の無音を検出して再生区間を詰める（連結時の「し・・か・・」間延び防止） */
+  private trimBounds(buf: AudioBuffer): { offset: number; duration: number } {
+    const data = buf.getChannelData(0)
+    const threshold = 0.012
+    let start = 0
+    while (start < data.length && Math.abs(data[start]) < threshold) start++
+    let end = data.length - 1
+    while (end > start && Math.abs(data[end]) < threshold) end--
+    const offset = Math.max(0, start / buf.sampleRate - 0.012)
+    const duration = Math.max(0.05, Math.min(buf.duration - offset, end / buf.sampleRate - offset + 0.05))
+    return { offset, duration }
+  }
+
+  private async loadClip(
+    ctx: AudioContext, file: string,
+  ): Promise<{ buf: AudioBuffer; offset: number; duration: number } | null> {
+    const cached = this.clips.get(file)
     if (cached) return cached
     try {
       const res = await fetch(`${import.meta.env.BASE_URL}assets/voice/${file}`)
       const arr = await res.arrayBuffer()
       const buf = await ctx.decodeAudioData(arr)
-      this.buffers.set(file, buf)
-      return buf
+      const clip = { buf, ...this.trimBounds(buf) }
+      this.clips.set(file, clip)
+      return clip
     } catch {
       return null
     }
@@ -101,21 +118,21 @@ class VoicePlayer {
   private async playClips(ctx: AudioContext, out: AudioNode, files: string[]): Promise<void> {
     const session = ++this.playSession
     this.stopClips()
-    const buffers = await Promise.all(files.map(f => this.loadBuffer(ctx, f)))
+    const clips = await Promise.all(files.map(f => this.loadClip(ctx, f)))
     if (session !== this.playSession) return // 新しい発話・キャンセルで置き換えられた
-    if (buffers.some(b => b === null)) return
+    if (clips.some(c => c === null)) return
     if (ctx.state === 'suspended') void ctx.resume()
     // 声は効果音より前に出す（master 0.5 × 1.6 = 実効 0.8）
     const gain = ctx.createGain()
     gain.gain.value = 1.6
     gain.connect(out)
-    let t = ctx.currentTime + 0.03
-    for (const buf of buffers as AudioBuffer[]) {
+    let t = ctx.currentTime + 0.02
+    for (const clip of clips as Array<{ buf: AudioBuffer; offset: number; duration: number }>) {
       const src = ctx.createBufferSource()
-      src.buffer = buf
+      src.buffer = clip.buf
       src.connect(gain)
-      src.start(t)
-      t += buf.duration + 0.05
+      src.start(t, clip.offset, clip.duration)
+      t += clip.duration + 0.02
       this.playing.push(src)
     }
   }

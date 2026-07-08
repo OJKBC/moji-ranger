@@ -63,11 +63,12 @@ const PHRASES = {
 /** ファイル名はコードポイントのスラッグ（Unicode ファイル名のURLトラブル回避） */
 const slug = token => [...token].map(c => c.codePointAt(0).toString(16)).join('-')
 
+// テンポ最優先: 普通の速さで発音させる（遅くしすぎると「し・・か・・」と間延びする）
 const jobs = []
-for (const t of [...HIRA, ...KATA]) jobs.push({ token: t, text: `${t}！`, rate: '-20%' })
-for (const t of DIGITS) jobs.push({ token: t, text: `${t}`, rate: '-15%' })
-for (const t of WORDS) jobs.push({ token: t, text: `${t}！`, rate: '-15%' })
-for (const [token, text] of Object.entries(PHRASES)) jobs.push({ token, text, rate: '-10%' })
+for (const t of [...HIRA, ...KATA]) jobs.push({ token: t, text: `${t}！`, rate: '-10%' })
+for (const t of DIGITS) jobs.push({ token: t, text: `${t}`, rate: '-10%' })
+for (const t of WORDS) jobs.push({ token: t, text: `${t}！`, rate: '+0%' })
+for (const [token, text] of Object.entries(PHRASES)) jobs.push({ token, text, rate: '-5%' })
 
 const tts = new MsEdgeTTS()
 await tts.setMetadata('ja-JP-NanamiNeural', OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3)

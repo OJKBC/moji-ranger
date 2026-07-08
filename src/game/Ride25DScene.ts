@@ -665,7 +665,8 @@ export class Ride25DScene extends Phaser.Scene {
   private startSequenceStep(): void {
     const seq = this.currentSeq
     this.currentTarget = seq[this.purifyStep]
-    // どの文字を撃つかは「音だけ」で伝える（文字を見せると同じ形を選ぶだけになってしまう）
+    // 出題は単語をそのまま読むだけ（「しか」）。テンポ最優先で説明セリフは入れない。
+    // どの文字を撃つかは音だけで伝える（文字を見せると同じ形を選ぶだけになってしまう）
     if (this.purifyStep === 0) {
       // 単語の開始: 全文字＋まぎらわしい文字を一度に出す
       const choiceCount = Math.max(seq.length + 1, this.battle.choiceCount)
@@ -676,16 +677,15 @@ export class Ride25DScene extends Phaser.Scene {
         exclude: seq,
       })
       const labels = Phaser.Utils.Array.Shuffle([...seq, ...distractors])
-      voice.speak(`${seq.join('、')}、の じゅんばんで うとう！ まずは、${seq[0]}！`)
-      this.setMissionText('おとを きいて じゅんばんに うとう！')
+      voice.speak(`${this.currentWord}！`)
+      this.setMissionText('じゅんばんに うとう！')
       this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
         this.spawnBubbleArc(labels)
         for (const s of seq) recordSeen(s, this.currentKind)
         this.beginStepInput()
       })
     } else {
-      // 2文字目以降: バブルはそのまま、次の狙いを音で伝える
-      voice.speak(`つぎは、${this.currentTarget}！`, { rate: 0.75 })
+      // 2文字目以降: バブルはそのまま、すぐ次の入力を受け付ける（声は出さない）
       this.beginStepInput()
     }
   }
@@ -803,6 +803,11 @@ export class Ride25DScene extends Phaser.Scene {
       if (this.currentProblem) voice.speak(this.currentProblem.voicePrompt)
       return
     }
+    if (this.stageData.mode === 'sequence') {
+      // 単語モードの聞き直しは単語そのもの（「しか！」）
+      if (this.currentWord) voice.speak(`${this.currentWord}！`)
+      return
+    }
     if (this.currentTarget) voice.speak(`${this.currentTarget}！`, { rate: 0.7 })
   }
 
@@ -883,11 +888,13 @@ export class Ride25DScene extends Phaser.Scene {
     const isSequence = this.stageData.mode === 'sequence'
     const wordDone = this.purifyStep >= this.purifyStepsNeeded
     if (isSequence) {
-      // 単語モード: 途中の文字は読み上げて次へ。残りのバブルはそのまま
-      // （読み上げが「つぎは〜」に切られないよう少し間を置く）
+      // 単語モード: 次の文字へ「即」進める（テンポ最優先。
+      // 「し」→「か」と連打してもそのまま正解になる。読み上げも挟まない）
       if (!wordDone) {
-        voice.speak(b.label, { rate: 0.75 })
-        this.time.delayedCall(this.level >= 3 ? 750 : 900, () => this.startPurifyStep())
+        this.currentTarget = this.currentSeq[this.purifyStep]
+        this.wrongThisStep = 0
+        this.stepStartAt = this.time.now
+        this.stepActive = true
         this.updateDebugHook()
         return
       }
@@ -983,14 +990,12 @@ export class Ride25DScene extends Phaser.Scene {
     sfx.purify()
     if (isBoss) this.time.delayedCall(400, () => sfx.fanfare())
 
-    // 浄化完了: くすみが取れて本来の色に戻り、明るい光に包まれ、
-    // にっこり目のオーバーレイで「笑顔になった」ことを見せる（画像非依存の汎用演出）
+    // 浄化完了: くすみが取れて本来の色に戻り、明るい光に包まれて空へ帰る
+    // （モンスターの顔はいじらない＝オーバーレイなし）
     m.clearTint()
     const glow = this.add.image(m.x, m.y, 'softglow')
       .setDepth(3999).setScale((m.displayWidth / 256) * 2.1).setTint(0xfff2c0).setAlpha(0)
     this.tweens.add({ targets: glow, alpha: 0.9, duration: 350 })
-    const happy = this.makeHappyOverlay(m)
-    this.tweens.add({ targets: happy, alpha: 1, duration: 350 })
     for (const puff of this.mistPuffs) {
       this.tweens.add({ targets: puff, alpha: 0, duration: 250 })
     }
@@ -1002,14 +1007,12 @@ export class Ride25DScene extends Phaser.Scene {
     this.time.delayedCall(1000, () => sparkle.destroy())
 
     const riseDelay = isBoss ? 800 : 350
-    // 笑顔になったモンスターが光ごとふわっと空へ帰っていく
+    // 元気になったモンスターが光ごとふわっと空へ帰っていく
     this.tweens.add({
-      targets: [m, happy, glow], y: `-=240`, alpha: 0,
+      targets: [m, glow], y: `-=240`, alpha: 0,
       duration: 800, delay: riseDelay, ease: 'Sine.easeIn',
     })
-    // オーバーレイは表示ピクセル座標で描いているためスケール基準が異なる
     this.tweens.add({ targets: m, scale: m.scale * 0.8, duration: 800, delay: riseDelay, ease: 'Sine.easeIn' })
-    this.tweens.add({ targets: happy, scale: 0.8, duration: 800, delay: riseDelay, ease: 'Sine.easeIn' })
     if (this.meterBox) {
       this.tweens.add({ targets: this.meterBox, alpha: 0, duration: 300, delay: riseDelay })
     }
@@ -1027,37 +1030,10 @@ export class Ride25DScene extends Phaser.Scene {
     this.time.delayedCall(isBoss ? 1800 : 550, () => this.afterPurify(isBoss))
     this.time.delayedCall(isBoss ? 1900 : 1300, () => {
       m.destroy()
-      happy.destroy()
       glow.destroy()
       puffs.forEach(p => p.destroy())
       meterBox?.destroy()
     })
-  }
-
-  /**
-   * 「にっこり目＋ほっぺ」のオーバーレイ。
-   * モンスター画像そのものは変えられないため、浄化完了の「笑顔」を
-   * 画像非依存のステッカー的な描画で重ねる（本番イラスト差し替え後も機能する）。
-   */
-  private makeHappyOverlay(m: Phaser.GameObjects.Image): Phaser.GameObjects.Container {
-    const w = m.displayWidth
-    const g = this.add.graphics()
-    // 閉じたにっこり目（∩）。元画像の目のあたりに重ねる
-    for (const exr of [-0.10, 0.045]) {
-      const ex = exr * w
-      const ey = -0.05 * w
-      g.fillStyle(0xe9f8d0, 1)
-      g.fillEllipse(ex, ey, 0.125 * w, 0.105 * w)
-      g.lineStyle(Math.max(4, 0.018 * w), 0x39511f, 1)
-      g.beginPath()
-      g.arc(ex, ey + 0.014 * w, 0.042 * w, Math.PI * 1.12, Math.PI * 1.88)
-      g.strokePath()
-    }
-    // ほっぺ
-    g.fillStyle(0xffb3c7, 0.55)
-    g.fillEllipse(-0.165 * w, 0.015 * w, 0.075 * w, 0.05 * w)
-    g.fillEllipse(0.11 * w, 0.015 * w, 0.075 * w, 0.05 * w)
-    return this.add.container(m.x, m.y, [g]).setDepth(4001).setAlpha(0)
   }
 
   /** 浄化後の進行: 次の敵 → （規定体数で）ボス → ゴール */
@@ -1117,8 +1093,9 @@ export class Ride25DScene extends Phaser.Scene {
       this.showGentleFeedback(b.container.x, b.container.y, `これは「${b.label}」だよ`)
       voice.speak(`これは、${b.label}、だよ`)
     }
-    // 狙いをもう一度伝える（忘れさせない）
-    this.time.delayedCall(1600, () => {
+    // 狙いをもう一度伝える（忘れさせない）。
+    // フィードバック（これは、く、だよ ≈2秒）を言い終えてから＝途中で遮らない
+    this.time.delayedCall(2600, () => {
       if (this.stepActive) this.speakPrompt()
     })
 
@@ -1289,6 +1266,12 @@ export class Ride25DScene extends Phaser.Scene {
     sfx.shoot()
 
     if (!best) {
+      this.fizzle(ix, iy)
+      return
+    }
+    // 出題の切り替わり中（演出待ち等）に撃ったバブルは、誤答扱いにしない
+    // （「し」正解直後に「か」を連打しても不利にならない）
+    if (!this.stepActive) {
       this.fizzle(ix, iy)
       return
     }
