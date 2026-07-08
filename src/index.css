@@ -62,44 +62,94 @@ body {
   text-align: center;
 }
 
-.title-sub {
-  color: #ffe28a;
-  font-size: clamp(15px, 3.5vw, 20px);
-  font-weight: bold;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+.title-screen {
+  gap: 10px;
 }
 
-.title-logo {
-  color: #ffffff;
-  font-size: clamp(34px, 8vw, 52px);
-  line-height: 1.2;
-  text-shadow:
-    0 4px 0 #7a4dff,
-    0 8px 18px rgba(0, 0, 0, 0.45);
+/* 登場モンスターのお出迎え（ふわふわ浮く・中央がつよい） */
+.title-monsters {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: -4px;
 }
 
-.title-logo span {
-  display: block;
-  font-size: 0.62em;
-  color: #ffd94d;
+.tm {
+  filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.5));
+  animation: tm-float 2.6s ease-in-out infinite;
 }
 
-.title-hero {
-  width: min(70vw, 340px);
-  aspect-ratio: 1100 / 825;
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
-  animation: bob 2.4s ease-in-out infinite;
+.tm-left {
+  width: min(24vw, 118px);
+  animation-delay: 0.25s;
 }
 
-@keyframes bob {
+.tm-center {
+  width: min(34vw, 178px);
+}
+
+.tm-right {
+  width: min(24vw, 118px);
+  animation-delay: 0.5s;
+}
+
+@keyframes tm-float {
   0%,
   100% {
     transform: translateY(0);
   }
   50% {
-    transform: translateY(-10px);
+    transform: translateY(-12px);
+  }
+}
+
+.title-sub {
+  color: #ffffff;
+  font-size: clamp(13px, 3.2vw, 18px);
+  font-weight: bold;
+  background: rgba(122, 77, 255, 0.4);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  padding: 6px 20px;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.title-logo {
+  font-size: clamp(36px, 9vw, 58px);
+  line-height: 1.15;
+  letter-spacing: 2px;
+  background-image: linear-gradient(180deg, #fff7d1 0%, #ffd94d 48%, #ff9d2e 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: #ffd94d; /* クリップ非対応環境のフォールバック */
+  filter: drop-shadow(0 4px 0 #5a2da0) drop-shadow(0 10px 18px rgba(0, 0, 0, 0.55));
+}
+
+.title-logo span {
+  display: block;
+  font-size: 0.56em;
+  letter-spacing: 6px;
+  background-image: linear-gradient(180deg, #eaffff 0%, #59e0f2 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: #9ff3ff;
+}
+
+/* スタートボタンをふわっと脈打たせて誘導する */
+.title-start {
+  animation: start-pulse 1.7s ease-in-out infinite;
+}
+
+@keyframes start-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
   }
 }
 

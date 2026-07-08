@@ -8,7 +8,9 @@ import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
 import type { DifficultyLevel, Stage, StageResult } from './types'
 import bgUrl from './assets/bg.jpg'
-import heroesUrl from './assets/heroes.png'
+
+/** タイトル画面に出す登場モンスター（public/assets/monsters/ から） */
+const monsterUrl = (file: string) => `${import.meta.env.BASE_URL}assets/monsters/${file}`
 
 type Screen = 'title' | 'map' | 'game' | 'result' | 'failed'
 
@@ -123,14 +125,19 @@ export default function App() {
   return (
     <div className="app" style={{ backgroundImage: `url(${bgUrl})` }}>
       {screen === 'title' && (
-        <div className="overlay-screen">
-          <p className="title-sub">よるの もじシティを すくえ！</p>
+        <div className="overlay-screen title-screen">
+          {/* 登場モンスターがお出迎え（中央につよい・両脇によわい） */}
+          <div className="title-monsters">
+            <img className="tm tm-left" src={monsterUrl('monster-weak-1.png')} alt="" />
+            <img className="tm tm-center" src={monsterUrl('monster-strong-9.png')} alt="" />
+            <img className="tm tm-right" src={monsterUrl('monster-weak-6.png')} alt="" />
+          </div>
           <h1 className="title-logo">
-            もじレンジャー
+            まなびレンジャー
             <span>ビームアカデミー</span>
           </h1>
-          <div className="title-hero" style={{ backgroundImage: `url(${heroesUrl})` }} />
-          <button className="big-button" onClick={openMap}>
+          <p className="title-sub">ひらがな・カタカナ・ことば・さんすう</p>
+          <button className="big-button title-start" onClick={openMap}>
             ▶ スタート
           </button>
           <p className="title-note">おとが でるよ 🔊</p>
