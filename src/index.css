@@ -10,6 +10,10 @@ body,
   width: 100%;
   height: 100%;
   overflow: hidden;
+  /* iPhone(Safari) だけ文字が自動拡大されて枠からはみ出す現象を止める。
+     iPad では起きないが iPhone の縦画面で発生していた（カテゴリのラベル等）。 */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
@@ -217,8 +221,14 @@ body {
 
 .map-title {
   color: #ffffff;
-  font-size: clamp(20px, 4.5vw, 30px);
+  font-size: clamp(18px, 4.5vw, 30px);
   text-shadow: 0 3px 0 #7a4dff, 0 6px 14px rgba(0, 0, 0, 0.45);
+  /* 狭い iPhone でボタンに挟まれても1文字ずつ縦積みにならないように。
+     余白を受け取り中央寄せ・改行は語のかたまり単位（スペース）で。 */
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  line-height: 1.15;
 }
 
 .map-total {
@@ -226,7 +236,9 @@ body {
   font-weight: bold;
   color: #ffd94d;
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
-  min-width: 70px;
+  /* 狭い画面ではタイトルに場所を譲る（固定幅で圧迫しない） */
+  flex: 0 0 auto;
+  white-space: nowrap;
   text-align: right;
 }
 
@@ -488,6 +500,12 @@ body {
 .zukan-button span {
   font-size: clamp(13px, 3vw, 17px);
   color: #ffffff;
+}
+
+/* とても狭い画面（旧 iPhone SE 等）ではタイトルと重ならないよう
+   「ずかん」の文字を隠して 📖 アイコンだけにする（機能は不変） */
+@media (max-width: 360px) {
+  .zukan-button span { display: none; }
 }
 
 .zukan-count {
@@ -797,12 +815,24 @@ body {
   text-shadow: 0 2px 0 rgba(255, 255, 255, 0.7), 0 4px 6px rgba(0, 0, 0, 0.18);
 }
 .category-label {
-  font-size: clamp(21px, 5vw, 29px);
+  font-size: clamp(20px, 5vw, 29px);
   font-weight: 800;
   color: #3a3a70;
   letter-spacing: 0.5px;
+  /* 枠内に必ず収める: 1行固定・はみ出したら省略ではなく縮む余地を作る */
+  max-width: 100%;
+  white-space: nowrap;
+  line-height: 1.15;
+  text-align: center;
 }
-.category-progress { font-size: clamp(13px, 3vw, 16px); color: #f5a623; letter-spacing: 2px; }
+.category-progress {
+  font-size: clamp(13px, 3vw, 16px);
+  color: #f5a623;
+  letter-spacing: 2px;
+  max-width: 100%;
+  white-space: nowrap;
+  line-height: 1;
+}
 
 /* タップを誘う光沢スイープ（定期的に横切る） */
 .category-shine {
