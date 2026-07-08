@@ -665,6 +665,7 @@ export class Ride25DScene extends Phaser.Scene {
   private startSequenceStep(): void {
     const seq = this.currentSeq
     this.currentTarget = seq[this.purifyStep]
+    // どの文字を撃つかは「音だけ」で伝える（文字を見せると同じ形を選ぶだけになってしまう）
     if (this.purifyStep === 0) {
       // 単語の開始: 全文字＋まぎらわしい文字を一度に出す
       const choiceCount = Math.max(seq.length + 1, this.battle.choiceCount)
@@ -676,15 +677,15 @@ export class Ride25DScene extends Phaser.Scene {
       })
       const labels = Phaser.Utils.Array.Shuffle([...seq, ...distractors])
       voice.speak(`${seq.join('、')}、の じゅんばんで うとう！ まずは、${seq[0]}！`)
-      this.setMissionText(`まずは「${seq[0]}」！`)
+      this.setMissionText('おとを きいて じゅんばんに うとう！')
       this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
         this.spawnBubbleArc(labels)
         for (const s of seq) recordSeen(s, this.currentKind)
         this.beginStepInput()
       })
     } else {
-      // 2文字目以降: バブルはそのまま、狙いだけ進める
-      this.setMissionText(`つぎは「${this.currentTarget}」！`)
+      // 2文字目以降: バブルはそのまま、次の狙いを音で伝える
+      voice.speak(`つぎは、${this.currentTarget}！`, { rate: 0.75 })
       this.beginStepInput()
     }
   }
@@ -882,9 +883,10 @@ export class Ride25DScene extends Phaser.Scene {
     const wordDone = this.purifyStep >= this.purifyStepsNeeded
     if (isSequence) {
       // 単語モード: 途中の文字は読み上げて次へ。残りのバブルはそのまま
+      // （読み上げが「つぎは〜」に切られないよう少し間を置く）
       if (!wordDone) {
         voice.speak(b.label, { rate: 0.75 })
-        this.time.delayedCall(this.level >= 3 ? 500 : 650, () => this.startPurifyStep())
+        this.time.delayedCall(this.level >= 3 ? 750 : 900, () => this.startPurifyStep())
         this.updateDebugHook()
         return
       }
@@ -1402,8 +1404,9 @@ export class Ride25DScene extends Phaser.Scene {
     this.missionLabel = this.add.text(-24, 0, '', {
       fontFamily: FONT, fontSize: '32px', fontStyle: 'bold', color: '#3a3a70',
     }).setOrigin(0.5)
-    const speakerBg = this.add.circle(width / 2 - 46, 0, 27, 0xffc94d)
-    const speaker = this.add.text(width / 2 - 46, 1, '🔊', { fontSize: '28px' }).setOrigin(0.5)
+    // もう一度きくボタン（子どもが押しやすい大きさ）
+    const speakerBg = this.add.circle(width / 2 - 50, 0, 34, 0xffc94d)
+    const speaker = this.add.text(width / 2 - 50, 1, '🔊', { fontSize: '36px' }).setOrigin(0.5)
     speakerBg.setInteractive({ useHandCursor: true })
     speakerBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation()

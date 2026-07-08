@@ -24,11 +24,17 @@ class SfxPlayer {
   private speechDucks = 0
   enabled = true
 
-  /** 読み上げ開始（voice.speak から呼ばれる） */
-  beginSpeechDuck(): void {
-    if (!IS_IOS) return
+  /**
+   * 読み上げ開始（voice.speak から呼ばれる）。
+   * iOS では suspend が「完了してから」発話しないと競合が残るため Promise を返す。
+   */
+  beginSpeechDuck(): Promise<void> {
+    if (!IS_IOS) return Promise.resolve()
     this.speechDucks++
-    if (this.ctx && this.ctx.state === 'running') void this.ctx.suspend()
+    if (this.ctx && this.ctx.state === 'running') {
+      return this.ctx.suspend().catch(() => undefined)
+    }
+    return Promise.resolve()
   }
 
   /** 読み上げ終了（onend/onerror/タイムアウトで必ず呼ばれる） */
@@ -72,11 +78,27 @@ class SfxPlayer {
    * 再生直前の保険。モバイルはタブ切替や画面ロックで AudioContext が
    * suspended に戻ることがあるため、毎回状態を確認して復帰させる。
    */
+  /** iOS: 効果音を鳴らしていない間はコンテキストを止めておく（TTSと競合させない） */
+  private idleTimer: number | null = null
+
+  private scheduleIdleSuspend(): void {
+    if (!IS_IOS) return
+    if (this.idleTimer !== null) window.clearTimeout(this.idleTimer)
+    this.idleTimer = window.setTimeout(() => {
+      this.idleTimer = null
+      if (this.speechDucks === 0 && this.ctx && this.ctx.state === 'running') {
+        void this.ctx.suspend()
+      }
+    }, 700)
+  }
+
   private ready(): boolean {
     if (!this.enabled || !this.ctx || !this.master) return false
     // 読み上げ中（iOS）は効果音をスキップして声を優先する
     if (this.speechDucks > 0) return false
     if (this.ctx.state === 'suspended') void this.ctx.resume()
+    // iOS は鳴らし終わったら自動でコンテキストを止める（バースト動作）
+    this.scheduleIdleSuspend()
     return true
   }
 
@@ -123,12 +145,13 @@ class SfxPlayer {
     src.stop(t0 + duration)
   }
 
-  /** ビーム発射（シュッと気持ちいい・連射しても耳障りにならない短さ） */
+  /** ビーム発射（「ドンッ」と強く・連射しても耳障りにならない短さ） */
   shoot(): void {
     if (this.throttled('shoot', 70)) return
-    this.noise(0.07, 0.22, 2600) // 空気を切る「シュッ」
-    this.tone('square', 880, 240, 0.08, 0.1)
-    this.tone('sine', 1400, 2100, 0.05, 0.08)
+    this.tone('sine', 160, 50, 0.2, 0.55) // 低音の芯（ドンッの胴体）
+    this.tone('square', 240, 80, 0.09, 0.2) // アタック
+    this.noise(0.12, 0.4, 800) // 空気の衝撃
+    this.noise(0.05, 0.15, 3000, 0.02) // 発射後のシュッ
   }
 
   /** 着弾・シャボン玉が弾ける（正解ヒットの主役音。着弾の瞬間に鳴らす） */

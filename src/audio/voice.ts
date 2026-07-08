@@ -69,8 +69,8 @@ class VoicePlayer {
       utter.volume = 1
 
       // iOS: AudioContext 再生中は TTS が消音されるため、読み上げの間だけ
-      // 効果音側を一時停止する（終了・エラー・タイムアウトで必ず解除）
-      sfx.beginSpeechDuck()
+      // 効果音側を一時停止する（終了・エラー・タイムアウトで必ず解除）。
+      // suspend が完了してから speak しないと競合が残るため then で繋ぐ
       let ducked = true
       const finish = () => {
         if (!ducked) return
@@ -80,8 +80,13 @@ class VoicePlayer {
       utter.onend = finish
       utter.onerror = finish
       window.setTimeout(finish, Math.min(5000, 900 + text.length * 220))
-
-      window.speechSynthesis.speak(utter)
+      void sfx.beginSpeechDuck().then(() => {
+        try {
+          window.speechSynthesis.speak(utter)
+        } catch {
+          finish()
+        }
+      })
       return true
     } catch {
       return false
