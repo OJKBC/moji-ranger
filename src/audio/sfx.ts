@@ -6,13 +6,39 @@
  * 最初のタップ（タイトル画面のスタート）で unlock() を必ず呼ぶこと。
  */
 
+/** iPhone/iPad か（iPadOS はデスクトップ偽装するため maxTouchPoints でも判定） */
+const IS_IOS = typeof navigator !== 'undefined' &&
+  (/iP(hone|ad|od)/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+
 class SfxPlayer {
   private ctx: AudioContext | null = null
   private master: GainNode | null = null
   private noiseBuffer: AudioBuffer | null = null
   /** 同種音の直近再生時刻（連打でうるさくならないよう間引く） */
   private lastPlayAt: Record<string, number> = {}
+  /**
+   * iOS は AudioContext が動いていると speechSynthesis（出題の声）が消音される
+   * 既知の競合がある。読み上げ中は効果音側を一時停止して声を優先する（iOS のみ）。
+   */
+  private speechDucks = 0
   enabled = true
+
+  /** 読み上げ開始（voice.speak から呼ばれる） */
+  beginSpeechDuck(): void {
+    if (!IS_IOS) return
+    this.speechDucks++
+    if (this.ctx && this.ctx.state === 'running') void this.ctx.suspend()
+  }
+
+  /** 読み上げ終了（onend/onerror/タイムアウトで必ず呼ばれる） */
+  endSpeechDuck(): void {
+    if (!IS_IOS) return
+    this.speechDucks = Math.max(0, this.speechDucks - 1)
+    if (this.speechDucks === 0 && this.ctx && this.ctx.state === 'suspended') {
+      void this.ctx.resume()
+    }
+  }
 
   /** 同じ種類の音が minGapMs 以内に鳴っていたら true（=スキップする） */
   private throttled(key: string, minGapMs: number): boolean {
@@ -36,7 +62,8 @@ class SfxPlayer {
       const data = this.noiseBuffer.getChannelData(0)
       for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume()
+    // 読み上げ中（speech duck）は resume しない＝声を消さない
+    if (this.ctx.state === 'suspended' && this.speechDucks === 0) void this.ctx.resume()
     // 注意: 以前ここにあった「無音 <audio> 再生でサイレントスイッチを回避する」ハックは、
     // オーディオセッションを切り替えて TTS（出題の声）を消してしまう副作用があったため撤去した。
   }
@@ -47,6 +74,8 @@ class SfxPlayer {
    */
   private ready(): boolean {
     if (!this.enabled || !this.ctx || !this.master) return false
+    // 読み上げ中（iOS）は効果音をスキップして声を優先する
+    if (this.speechDucks > 0) return false
     if (this.ctx.state === 'suspended') void this.ctx.resume()
     return true
   }

@@ -9,6 +9,8 @@
  * 置き換えればよい（speak() のインターフェースを維持する）。
  */
 
+import { sfx } from './sfx'
+
 class VoicePlayer {
   readonly supported = typeof window !== 'undefined' && 'speechSynthesis' in window
   private jaVoice: SpeechSynthesisVoice | null = null
@@ -22,9 +24,11 @@ class VoicePlayer {
     this.pickVoice()
     // 音声リストは非同期に届くことがある
     window.speechSynthesis.addEventListener('voiceschanged', () => this.pickVoice())
-    // 無音の発話でエンジンを起こしておく（ユーザー操作起点が必要な環境向け）
+    // 空の発話でエンジンを起こしておく（ユーザー操作起点が必要な環境向け）。
+    // volume は 1 のままにする（iOS は最初の発話の音量設定がセッションに残ることがあり、
+    // 0 にすると以後の読み上げまで無音になる報告がある。空文字なので何も聞こえない）
     const primer = new SpeechSynthesisUtterance('')
-    primer.volume = 0
+    primer.volume = 1
     window.speechSynthesis.speak(primer)
   }
 
@@ -62,6 +66,21 @@ class VoicePlayer {
       if (this.jaVoice) utter.voice = this.jaVoice
       utter.rate = opts?.rate ?? 0.85
       utter.pitch = opts?.pitch ?? 1.15
+      utter.volume = 1
+
+      // iOS: AudioContext 再生中は TTS が消音されるため、読み上げの間だけ
+      // 効果音側を一時停止する（終了・エラー・タイムアウトで必ず解除）
+      sfx.beginSpeechDuck()
+      let ducked = true
+      const finish = () => {
+        if (!ducked) return
+        ducked = false
+        sfx.endSpeechDuck()
+      }
+      utter.onend = finish
+      utter.onerror = finish
+      window.setTimeout(finish, Math.min(5000, 900 + text.length * 220))
+
       window.speechSynthesis.speak(utter)
       return true
     } catch {
