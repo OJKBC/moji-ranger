@@ -147,6 +147,8 @@ export class Ride25DScene extends Phaser.Scene {
   private currentProblem: MathProblem | null = null
   /** english: 今読み上げる英語トークン（アルファベット/単語）。統計キー・聞き直しにも使う */
   private currentEnWord = ''
+  /** math: 直前に出した式（同じ式の連続を避ける） */
+  private lastMathQuestion = ''
 
   // モンスターの抽選（グループ・浄化回数は data/monsters.ts のテーブルで決まる）
   private monsterKeys: { weak: string[]; strong: string[]; boss: string[] } = { weak: [], strong: [], boss: [] }
@@ -766,9 +768,17 @@ export class Ride25DScene extends Phaser.Scene {
   /** math モード（さんすうバトル）: 問題を表示・読み上げ、答えの候補数字を撃つ */
   private startMathStep(): void {
     const spec = this.stageData.mathLevels?.[this.level]
-    this.currentProblem = spec
-      ? this.makeMathProblem(spec)
-      : this.stageData.problems![Phaser.Math.Between(0, this.stageData.problems!.length - 1)]
+    if (spec) {
+      // 直前と同じ式が続かないよう、数問ぶんは引き直す（範囲が狭い難易度でも極力ばらす）
+      let prob = this.makeMathProblem(spec)
+      for (let i = 0; i < 6 && prob.question === this.lastMathQuestion; i++) {
+        prob = this.makeMathProblem(spec)
+      }
+      this.currentProblem = prob
+      this.lastMathQuestion = prob.question
+    } else {
+      this.currentProblem = this.stageData.problems![Phaser.Math.Between(0, this.stageData.problems!.length - 1)]
+    }
     this.currentTarget = this.currentProblem.answer
     voice.speak(this.currentProblem.voicePrompt)
     const labels = Phaser.Utils.Array.Shuffle([...this.currentProblem.choices])
@@ -797,9 +807,10 @@ export class Ride25DScene extends Phaser.Scene {
     }
     const read = (n: number) => DIGIT_READING[String(n)] ?? String(n)
     const choices = new Set<string>([String(answer)])
+    const maxChoice = Math.max(9, spec.maxAnswer) // 答えが10まであるとき10も誤答に出す（10=必ず正解のヒントを防ぐ）
     for (let guard = 0; guard < 30 && choices.size < 3; guard++) {
       const near = answer + Phaser.Math.Between(-2, 2)
-      if (near >= 1 && near <= 9) choices.add(String(near))
+      if (near >= 1 && near <= maxChoice) choices.add(String(near))
     }
     return {
       question: `${a}${op}${b}`,

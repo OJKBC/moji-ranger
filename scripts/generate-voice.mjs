@@ -21,32 +21,33 @@ fs.mkdirSync(DST, { recursive: true })
 
 // ---- トークン一覧（voice.speak のテキストを 、。！？とスペースで区切ったもの）----
 
+// ひらがな・カタカナ清音46（ステージの letterPool 全域をカバー）
 const HIRA = [
   'あ', 'い', 'う', 'え', 'お', 'か', 'き', 'く', 'け', 'こ',
-  'さ', 'し', 'す', 'せ', 'そ', 'た', 'ち', 'つ', 'と', 'に',
-  'ぬ', 'ね', 'の', 'は', 'ほ', 'ま', 'め', 'も', 'ら', 'り',
-  'る', 'れ', 'わ', 'ん',
-  // 単語（words.ts）に含まれる追加の文字
-  'ぞ', 'ご', 'み', 'な', 'ぎ', 'だ', 'ひ',
+  'さ', 'し', 'す', 'せ', 'そ', 'た', 'ち', 'つ', 'て', 'と',
+  'な', 'に', 'ぬ', 'ね', 'の', 'は', 'ひ', 'ふ', 'へ', 'ほ',
+  'ま', 'み', 'む', 'め', 'も', 'や', 'ゆ', 'よ', 'ら', 'り',
+  'る', 'れ', 'ろ', 'わ', 'を', 'ん',
 ]
 const KATA = [
   'ア', 'イ', 'ウ', 'エ', 'オ', 'カ', 'キ', 'ク', 'ケ', 'コ',
-  'サ', 'シ', 'ス', 'セ', 'ソ', 'タ', 'チ', 'ツ', 'ト', 'ニ',
-  'ヌ', 'ネ', 'ノ', 'ハ', 'ホ', 'マ', 'メ', 'モ', 'ラ', 'リ',
-  'ル', 'レ', 'ワ', 'ン',
+  'サ', 'シ', 'ス', 'セ', 'ソ', 'タ', 'チ', 'ツ', 'テ', 'ト',
+  'ナ', 'ニ', 'ヌ', 'ネ', 'ノ', 'ハ', 'ヒ', 'フ', 'ヘ', 'ホ',
+  'マ', 'ミ', 'ム', 'メ', 'モ', 'ヤ', 'ユ', 'ヨ', 'ラ', 'リ',
+  'ル', 'レ', 'ロ', 'ワ', 'ヲ', 'ン',
 ]
 /** 数字の読み（に・ご は文字クリップと同音なので共用） */
 const DIGITS = ['いち', 'さん', 'よん', 'ろく', 'なな', 'はち', 'きゅう', 'じゅう']
-/** 単語（words.ts と同期させること）＋ 英語 meaning ステージの意味（ひらがな） */
-const WORDS = [
-  'ねこ', 'いぬ', 'ぞう', 'しか', 'うま',
-  'りんご', 'みかん', 'すいか', 'さかな', 'うさぎ',
-  'くだもの', 'ひまわり', 'にわとり', 'かまきり',
-  // english.ts の MEANING_WORDS の意味（正解時に「英語→いみ」で読む）
-  'ばなな', 'とり', 'くま', 'ぶどう', 'れもん',
-  'あか', 'あお', 'みどり', 'らいおん', 'もも',
-  'ほし', 'つき', 'たいよう', 'き',
-]
+
+// ---- データファイルから自動抽出（追記したらデータ側を直すだけでクリップに反映される）----
+const readFile = rel => fs.readFileSync(path.join(root, '..', rel), 'utf8')
+const wordsSrc = readFile('src/data/words.ts')
+const englishSrc = readFile('src/data/english.ts')
+/** words.ts の単語（ひらがな）＋ english.ts の meaning（ひらがな）を読み上げ対象にする */
+const WORDS = [...new Set([
+  ...[...wordsSrc.matchAll(/word:\s*'([^']+)'/g)].map(m => m[1]),
+  ...[...englishSrc.matchAll(/meaning:\s*'([^']+)'/g)].map(m => m[1]),
+])]
 /** モンスターの名前（src/data/monsterNames.ts と同期させること） */
 const MONSTER_NAMES = [
   'りゅうたん', 'かぶとん', 'ぱたぱた', 'いわごろ', 'とげまる', 'ぷにぷに',
@@ -111,14 +112,10 @@ const PHRASES = {
  * 別の en-US ニューラル音声で生成し、EN_VOICE_CLIPS（voiceManifestEn.ts）に登録する。
  */
 const EN_LETTERS = 'abcdefghijklmnopqrstuvwxyz'.split('')
-const EN_WORDS = [...new Set([
-  // SPELL_WORDS の正解スペル
-  'dog', 'cat', 'run', 'was', 'sun', 'red', 'big', 'cup',
-  'fish', 'blue', 'jump', 'milk', 'star', 'frog', 'cake', 'bird',
-  'apple', 'green', 'happy', 'water', 'tiger', 'house', 'candy', 'train',
-  // MEANING_WORDS の英単語
-  'banana', 'orange', 'bear', 'grape', 'lemon', 'lion', 'peach', 'moon', 'tree',
-])]
+// english.ts の word:（SPELL の正解スペル＋ MEANING の英単語）をすべて読み上げ対象にする
+const EN_WORDS = [...new Set(
+  [...englishSrc.matchAll(/word:\s*'([a-zA-Z]+)'/g)].map(m => m[1].toLowerCase()),
+)]
 
 /** ファイル名はコードポイントのスラッグ（Unicode ファイル名のURLトラブル回避） */
 const slug = token => [...token].map(c => c.codePointAt(0).toString(16)).join('-')
