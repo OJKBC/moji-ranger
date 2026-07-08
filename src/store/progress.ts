@@ -6,7 +6,7 @@ const STORAGE_KEY = 'moji-ranger-progress'
 const SCHEMA_VERSION = 5
 
 function defaultStats(): LetterStats {
-  return { seen: 0, correct: 0, wrong: 0, avgReactionTime: 0, masteryLevel: 0 }
+  return { seen: 0, correct: 0, wrong: 0, avgReactionTime: 0, masteryLevel: 0, assistedCorrect: 0 }
 }
 
 function defaultProgress(): PlayerProgress {
@@ -163,12 +163,23 @@ function statsMapFor(progress: PlayerProgress, kind: TargetKind | 'math'): Recor
  * 1回の解答を記録する。
  * - 正解: correct++ と反応時間の移動平均を更新
  * - 誤答: wrong++（出題された文字・問題に対して記録し、後の再出題の材料にする）
+ * - 補助あり正解（assisted=㉛。選択肢を減らす等の支援下での正解）:
+ *   assistedCorrect++ のみ。correct・反応時間・masteryLevel には加算せず、
+ *   通常正解と区別して記録する（支援で当てた分で習熟度を水増ししない）。
  */
-export function recordAnswer(label: string, kind: TargetKind | 'math', correct: boolean, reactionMs?: number): void {
+export function recordAnswer(
+  label: string,
+  kind: TargetKind | 'math',
+  correct: boolean,
+  reactionMs?: number,
+  assisted = false,
+): void {
   const progress = loadProgress()
   const map = statsMapFor(progress, kind)
   const stats = map[label] ?? defaultStats()
-  if (correct) {
+  if (correct && assisted) {
+    stats.assistedCorrect = (stats.assistedCorrect ?? 0) + 1
+  } else if (correct) {
     stats.correct += 1
     if (reactionMs !== undefined && reactionMs > 0) {
       stats.avgReactionTime = stats.avgReactionTime === 0

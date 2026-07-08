@@ -179,6 +179,12 @@ export interface LetterStats {
   avgReactionTime: number
   /** 0〜5 の熟達度 */
   masteryLevel: number
+  /**
+   * 補助あり正解の回数（㉛）。選択肢を減らす等の支援下で当てた正解は、
+   * 通常正解（correct）と区別してここに記録し、masteryLevel には加算しない
+   * （習熟度の水増しを防ぐ）。古いセーブには無いので任意項目。
+   */
+  assistedCorrect?: number
 }
 
 export interface PlayerProgress {

@@ -196,6 +196,8 @@ export class Ride25DScene extends Phaser.Scene {
   private wrongTapStreak = 0
   private hintReplayDone = false
   private hintGlowDone = false
+  /** ㉛ この問題で支援（選択肢を減らす等）を出したか。出したら正解は補助あり扱いで記録する */
+  private assistedThisStep = false
   private freezeUntil = 0
   private lastShotAt = -9999
   private acceptInput = true
@@ -683,6 +685,7 @@ export class Ride25DScene extends Phaser.Scene {
   private startPurifyStep(): void {
     this.stepActive = false
     this.wrongThisStep = 0
+    this.assistedThisStep = false
     this.hintReplayDone = false
     this.hintGlowDone = false
     this.currentKind = this.stageData.correctKind
@@ -890,28 +893,22 @@ export class Ride25DScene extends Phaser.Scene {
     }
   }
 
-  /** 例単語カード（絵文字＋つづり・頭文字を金色で強調）を上部中央に出す */
+  /**
+   * ㉜ 例単語のヒントは「絵（絵文字）だけ」を上部中央に出す。
+   * 例単語のつづり・頭文字などの「文字」は画面に出さない（答え＝レターが見えてしまうため）。
+   * 絵が無い例単語のときは何も出さない（音声の「A for Apple」だけで出題する）。
+   */
   private showAbcHint(ex: { word: string; emoji: string }): void {
     this.clearAbcHint()
-    const emoji = this.add.text(0, 0, ex.emoji, { fontSize: '40px' }).setOrigin(0, 0.5)
-    const first = this.add.text(0, 0, ex.word.charAt(0), {
-      fontFamily: FONT, fontSize: '42px', fontStyle: 'bold', color: '#ffd94d',
-    }).setOrigin(0, 0.5).setStroke('#5a3d00', 6)
-    const rest = this.add.text(0, 0, ex.word.slice(1), {
-      fontFamily: FONT, fontSize: '34px', fontStyle: 'bold', color: '#ffffff',
-    }).setOrigin(0, 0.5).setStroke('#3a3a70', 5)
-    let x = 0
-    emoji.x = x; x += emoji.width + 10
-    first.x = x; x += first.width + 1
-    rest.x = x + 1; x += rest.width
-    const totalW = x
-    for (const t of [emoji, first, rest]) t.x -= totalW / 2
+    if (!ex.emoji) return
+    const emoji = this.add.text(0, 0, ex.emoji, { fontSize: '54px' }).setOrigin(0.5)
+    const w = emoji.width
     const bg = this.add.graphics()
     bg.fillStyle(0x241a4a, 0.85)
-    bg.fillRoundedRect(-totalW / 2 - 20, -32, totalW + 40, 64, 22)
+    bg.fillRoundedRect(-w / 2 - 24, -42, w + 48, 84, 26)
     bg.lineStyle(3, 0xffd94d, 0.9)
-    bg.strokeRoundedRect(-totalW / 2 - 20, -32, totalW + 40, 64, 22)
-    this.abcHint = this.add.container(GAME_W / 2, 78, [bg, emoji, first, rest]).setDepth(8100).setScale(0)
+    bg.strokeRoundedRect(-w / 2 - 24, -42, w + 48, 84, 26)
+    this.abcHint = this.add.container(GAME_W / 2, 84, [bg, emoji]).setDepth(8100).setScale(0)
     this.tweens.add({ targets: this.abcHint, scale: 1, duration: 260, ease: 'Back.easeOut' })
   }
 
@@ -939,7 +936,7 @@ export class Ride25DScene extends Phaser.Scene {
 
     const wrongs = Phaser.Utils.Array.Shuffle([...spec.wrong]).slice(0, choiceCount - 1)
     const labels = Phaser.Utils.Array.Shuffle([spec.word, ...wrongs])
-    this.announceEnglish(spec.word, spec.word)
+    this.announceEnglish(spec.word)
     this.time.delayedCall(this.tune.fastPrompt ? 340 : 420, () => {
       this.spawnBubbleArc(labels)
       recordSeen(spec.word, 'english')
@@ -966,7 +963,7 @@ export class Ride25DScene extends Phaser.Scene {
     this.recentTargets.push(spec.meaning)
 
     const labels = Phaser.Utils.Array.Shuffle([spec.meaning, ...meaningDistractors(spec, this.level, choiceCount - 1)])
-    this.announceEnglish(spec.word, spec.word)
+    this.announceEnglish(spec.word)
     this.time.delayedCall(this.tune.fastPrompt ? 340 : 420, () => {
       this.spawnBubbleArc(labels)
       recordSeen(spec.word, 'english')
@@ -1030,27 +1027,14 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   /**
-   * 英語の読み上げ＋「音が鳴った」合図。音が出せない端末では対象を大きく表示する
-   * （フォールバック。abc/words は文字そのもの、meaning は英単語を出す）。
+   * 英語の読み上げ＋「音が鳴った」合図。
+   * ㉜ 出題中は答えにつながる文字（スペル・レター）を画面に出さない。
+   * 音が出せない端末でも文字は出さず（絵がある abc は announceAbc 側で絵文字のみ）、
+   * ミッションバーのパルスだけで「耳をすませて」を伝える（音声のみで出題）。
    */
-  private announceEnglish(display: string, enWord: string): void {
-    if (voice.speakEn(enWord)) {
-      this.tweens.add({ targets: this.missionBar, scale: 1.07, duration: 200, yoyo: true, repeat: 1 })
-      return
-    }
-    sfx.pop()
-    const size = display.length >= 5 ? '68px' : display.length >= 4 ? '84px' : display.length >= 2 ? '96px' : '120px'
-    const glow = this.add.image(GAME_W / 2, 470, 'softglow')
-      .setDepth(8390).setScale(1.6).setAlpha(0.8).setTint(0xfff2c0)
-    const big = this.add.text(GAME_W / 2, 470, display, {
-      fontFamily: FONT, fontSize: size, fontStyle: 'bold', color: '#ffffff',
-    }).setOrigin(0.5).setDepth(8400).setStroke('#7a4dff', 12).setScale(0)
-    big.setShadow(0, 5, 'rgba(80,40,120,0.45)', 10)
-    this.tweens.add({ targets: big, scale: 1, duration: 240, ease: 'Back.easeOut' })
-    this.tweens.add({
-      targets: [big, glow], alpha: 0, y: 430, duration: 300, delay: 900, ease: 'Cubic.easeIn',
-      onComplete: () => { big.destroy(); glow.destroy() },
-    })
+  private announceEnglish(enWord: string): void {
+    voice.speakEn(enWord)
+    this.tweens.add({ targets: this.missionBar, scale: 1.07, duration: 200, yoyo: true, repeat: 1 })
   }
 
   /** 英語正解時の演出: 大きく表示＋英語で読み上げ（meaning は「英語→意味」の順で読む） */
@@ -1113,26 +1097,12 @@ export class Ride25DScene extends Phaser.Scene {
    * TTS が使えない環境だけ、フォールバックとして文字を表示する。
    */
   private announceTarget(label: string): void {
-    const spoke = voice.speak(`${label}！`, { rate: 0.7 })
-    if (spoke && voice.available()) {
-      // ミッションバーをふわっとパルスさせて「音が鳴った」ことを伝える
-      // （中央に大きな🔊を出すとモンスターが隠れるためバー側で表現）
-      this.tweens.add({ targets: this.missionBar, scale: 1.07, duration: 200, yoyo: true, repeat: 1 })
-      return
-    }
-    // フォールバック: 音が出ない環境では文字で伝える（モンスターを隠さない下側に表示）
-    const glow = this.add.image(GAME_W / 2, 470, 'softglow')
-      .setDepth(8390).setScale(1.5).setAlpha(0.8).setTint(0xfff2c0)
-    const big = this.add.text(GAME_W / 2, 470, label, {
-      fontFamily: FONT, fontSize: '110px', fontStyle: 'bold', color: '#ffffff',
-    }).setOrigin(0.5).setDepth(8400).setStroke('#7a4dff', 12).setScale(0)
-    big.setShadow(0, 5, 'rgba(80,40,120,0.45)', 10)
-    this.tweens.add({ targets: big, scale: 1, duration: 240, ease: 'Back.easeOut' })
-    this.tweens.add({
-      targets: [big, glow], alpha: 0, y: 430, duration: 300, delay: 750,
-      ease: 'Cubic.easeIn',
-      onComplete: () => { big.destroy(); glow.destroy() },
-    })
+    // ㉜ 出題中は答えの文字（ターゲット）を画面に出さない。
+    // 音声で読み上げ、ミッションバーのパルスだけで「耳をすませて」を伝える
+    // （中央に大きな🔊や文字を出すとモンスターが隠れる／答えが見えるため）。
+    // 音が出せない端末でも文字は出さず、音声のみで出題する。
+    voice.speak(`${label}！`, { rate: 0.7 })
+    this.tweens.add({ targets: this.missionBar, scale: 1.07, duration: 200, yoyo: true, repeat: 1 })
   }
 
   private speakPrompt(): void {
@@ -1140,7 +1110,7 @@ export class Ride25DScene extends Phaser.Scene {
       if (this.stageData.enMode === 'letter' && this.currentEnWord) {
         voice.speakAbc(this.currentEnWord, abcExample(this.currentEnWord).word)
       } else if (this.currentEnWord) {
-        this.announceEnglish(this.currentEnWord, this.currentEnWord)
+        this.announceEnglish(this.currentEnWord)
       }
       return
     }
@@ -1156,14 +1126,19 @@ export class Ride25DScene extends Phaser.Scene {
     if (this.currentTarget) voice.speak(`${this.currentTarget}！`, { rate: 0.7 })
   }
 
-  /** 学習統計への記録（math は問題キー・english は英語トークン・それ以外は文字） */
+  /**
+   * 学習統計への記録（math は問題キー・english は英語トークン・それ以外は文字）。
+   * ㉛ 支援下（選択肢を減らす等）で当てた正解は assisted=true で記録し、
+   * 通常正解と区別する（習熟度を水増ししない）。
+   */
   private recordStat(correct: boolean, reactionMs?: number): void {
+    const assisted = correct && this.assistedThisStep
     if (this.stageData.type === 'english') {
-      recordAnswer(this.currentEnWord, 'english', correct, reactionMs)
+      recordAnswer(this.currentEnWord, 'english', correct, reactionMs, assisted)
     } else if (this.stageData.mode === 'math' && this.currentProblem) {
-      recordAnswer(this.currentProblem.question, 'math', correct, reactionMs)
+      recordAnswer(this.currentProblem.question, 'math', correct, reactionMs, assisted)
     } else {
-      recordAnswer(this.currentTarget, this.currentKind, correct, reactionMs)
+      recordAnswer(this.currentTarget, this.currentKind, correct, reactionMs, assisted)
     }
   }
 
@@ -1244,6 +1219,7 @@ export class Ride25DScene extends Phaser.Scene {
       if (!wordDone) {
         this.currentTarget = this.currentSeq[this.purifyStep]
         this.wrongThisStep = 0
+        this.assistedThisStep = false
         this.stepStartAt = this.time.now
         this.stepActive = true
         this.updateDebugHook()
@@ -1764,23 +1740,12 @@ export class Ride25DScene extends Phaser.Scene {
       if (this.stepActive) this.speakPrompt()
     })
 
-    // ライフも同じ思想: 誤答ショットのときだけ減る（もや玉が届いたタイミングで）
+    // ライフも同じ思想: 誤答ショットのときだけ減る（もや玉が届いたタイミングで）。
+    // 残り1になったら loseLife 内で助け舟（読み上げ＋選択肢を1つ減らす）を出す。
+    // ㉛ 正解を大きくする／光らせる等の「答えを指し示す」視覚ヒントは廃止。
     this.time.delayedCall(650, () => {
       this.loseLife()
       if (this.failed) return
-
-      if (this.wrongThisStep === 2) {
-        const correct = this.bubbles.find(x => x.alive && x.label === this.currentTarget)
-        if (correct) {
-          correct.baseScale *= 1.25
-          correct.radius = 80 * correct.baseScale
-          this.tweens.add({ targets: correct.container, scale: correct.baseScale, duration: 350, ease: 'Back.easeOut' })
-        }
-      }
-      if (this.wrongTapStreak >= 3) {
-        this.wrongTapStreak = 0
-        this.glowCorrectBubble()
-      }
     })
   }
 
@@ -1825,7 +1790,8 @@ export class Ride25DScene extends Phaser.Scene {
 
   /**
    * ライフを1減らす。ハートは割れずに「もやもや」に包まれる見せ方。
-   * 残り1（=2回ミス）になった時点で必ず正解を光らせ、負ける前に助け舟を出す。
+   * 残り1（=2回ミス）になった時点で助け舟を出す（㉛ 正解は光らせず、
+   * もう一度読み上げ＋ダミーを1つ減らす＝答えは見せない支援）。
    */
   private loseLife(): void {
     if (this.failed) return
@@ -1837,7 +1803,7 @@ export class Ride25DScene extends Phaser.Scene {
       this.tweens.add({ targets: heart, scale: 1.3, duration: 140, yoyo: true })
     }
     if (this.lives === 1) {
-      this.glowCorrectBubble()
+      this.assistStruggling()
     } else if (this.lives <= 0) {
       this.failStage()
     }
@@ -1857,29 +1823,33 @@ export class Ride25DScene extends Phaser.Scene {
     }))
   }
 
-  private glowCorrectBubble(): void {
-    const correct = this.bubbles.find(t => t.alive && t.label === this.currentTarget)
-    if (!correct) return
-    const ring = this.add.image(correct.container.x, correct.container.y, 'ring')
-      .setDepth(5990).setTint(0xffe066).setScale(2.2).setAlpha(0)
-    let pulses = 0
-    const pulse = () => {
-      if (!correct.alive || pulses >= 3) { ring.destroy(); return }
-      pulses++
-      ring.setPosition(correct.container.x, correct.container.y).setScale(1.6).setAlpha(0.95)
-      // 正解のオーブだけ金色のキラキラをまとわせる
-      const twinkle = this.add.particles(0, 0, 'star', {
-        speed: { min: 20, max: 80 }, scale: { start: 0.55, end: 0 }, lifespan: 550,
-        tint: [0xffe066, 0xffd94d, 0xfff6c8], blendMode: 'ADD', emitting: false,
-      }).setDepth(5991)
-      twinkle.explode(6, correct.container.x, correct.container.y)
-      this.time.delayedCall(700, () => twinkle.destroy())
-      this.tweens.add({
-        targets: ring, scale: 2.8, alpha: 0, duration: 500, ease: 'Cubic.easeOut',
-        onComplete: pulse,
-      })
-    }
-    pulse()
+  /**
+   * ㉛ 苦戦している子への助け舟。「正解を光らせる／指し示す」視覚ヒントは出さない
+   * （答えが見えてしまうため廃止）。代わりに——
+   *   ① もう一度ゆっくり読み上げる（音のヒント）
+   *   ② 選択肢を1つだけ減らす（ダミーを1個そっと消す。正解は必ず残す）
+   * ②は「どれが正解か」は見せずに難しさだけ下げる支援。行った場合は assistedThisStep を
+   * 立て、その問題の正解は補助あり扱いで記録する（習熟度を水増ししない）。
+   * 選択肢は「正解＋ダミー1つ」の2択までしか減らさない（1択＝答えを教える、になるため）。
+   */
+  private assistStruggling(): void {
+    if (!this.stepActive) return
+    // ① もう一度読み上げ（答えは映さず、音だけ）
+    this.speakPrompt()
+    this.tweens.add({ targets: this.missionBar, scale: 1.08, duration: 180, yoyo: true, repeat: 1 })
+    // ② ダミーを1つ減らす（正解＋ダミー1つは必ず残す）
+    const wrongs = this.bubbles.filter(b => b.alive && b.label !== this.currentTarget)
+    if (wrongs.length <= 1) return
+    const victim = wrongs[Phaser.Math.Between(0, wrongs.length - 1)]
+    victim.alive = false
+    this.assistedThisStep = true
+    this.bubbles = this.bubbles.filter(b => b !== victim)
+    sfx.pop()
+    this.tweens.add({
+      targets: victim.container, scale: 0, alpha: 0, duration: 260, ease: 'Back.easeIn',
+      onComplete: () => victim.container.destroy(),
+    })
+    this.updateDebugHook()
   }
 
   // ============================================================= 手・ビーム
@@ -2263,7 +2233,9 @@ export class Ride25DScene extends Phaser.Scene {
       }
       if (elapsed > 22000 && !this.hintGlowDone) {
         this.hintGlowDone = true
-        this.glowCorrectBubble()
+        // ㉛ 長考しているときも「正解を光らせる」ことはせず、
+        // もう一度読み上げ＋ダミーを1つ減らす（答えは見せない支援）。
+        this.assistStruggling()
       }
     }
   }
