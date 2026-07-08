@@ -156,7 +156,6 @@ export class Ride25DScene extends Phaser.Scene {
   private failed = false
 
   // UI・統計
-  private missionLabel!: Phaser.GameObjects.Text
   private missionBar!: Phaser.GameObjects.Container
   private comboBadge!: Phaser.GameObjects.Container
   private comboText!: Phaser.GameObjects.Text
@@ -282,8 +281,6 @@ export class Ride25DScene extends Phaser.Scene {
     this.spawnApproaching(false)
     this.phase = 'riding'
     this.targetSpeed = this.cruiseSpeed
-    // セリフは出題（文字の読み上げ）だけに絞る。移動中はミッションバーも出さない
-    this.setMissionText('')
     this.updateDebugHook()
   }
 
@@ -678,7 +675,6 @@ export class Ride25DScene extends Phaser.Scene {
       })
       const labels = Phaser.Utils.Array.Shuffle([...seq, ...distractors])
       voice.speak(`${this.currentWord}！`)
-      this.setMissionText('じゅんばんに うとう！')
       this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
         this.spawnBubbleArc(labels)
         for (const s of seq) recordSeen(s, this.currentKind)
@@ -697,7 +693,6 @@ export class Ride25DScene extends Phaser.Scene {
       ? this.makeMathProblem(spec)
       : this.stageData.problems![Phaser.Math.Between(0, this.stageData.problems!.length - 1)]
     this.currentTarget = this.currentProblem.answer
-    this.setMissionText(`「${this.currentProblem.question}」は どれ？`)
     voice.speak(this.currentProblem.voicePrompt)
     const labels = Phaser.Utils.Array.Shuffle([...this.currentProblem.choices])
     this.time.delayedCall(this.level >= 3 ? 340 : 420, () => {
@@ -776,14 +771,12 @@ export class Ride25DScene extends Phaser.Scene {
   private announceTarget(label: string): void {
     const spoke = voice.speak(`${label}！`, { rate: 0.7 })
     if (spoke && voice.available()) {
-      this.setMissionText('おとを きいて ねらおう！')
       // ミッションバーをふわっとパルスさせて「音が鳴った」ことを伝える
       // （中央に大きな🔊を出すとモンスターが隠れるためバー側で表現）
       this.tweens.add({ targets: this.missionBar, scale: 1.07, duration: 200, yoyo: true, repeat: 1 })
       return
     }
     // フォールバック: 音が出ない環境では文字で伝える（モンスターを隠さない下側に表示）
-    this.setMissionText(`「${label}」を ねらって！`)
     const glow = this.add.image(GAME_W / 2, 470, 'softglow')
       .setDepth(8390).setScale(1.5).setAlpha(0.8).setTint(0xfff2c0)
     const big = this.add.text(GAME_W / 2, 470, label, {
@@ -1042,7 +1035,6 @@ export class Ride25DScene extends Phaser.Scene {
       this.fillCounterCrown()
       this.pending = 'goal'
       this.nextEventAt = this.progress + this.battle.rideDistance * 0.9
-      this.setMissionText('')
     } else {
       this.fillCounterDot(this.enemyIndex)
       this.enemyIndex++
@@ -1051,14 +1043,12 @@ export class Ride25DScene extends Phaser.Scene {
         this.pending = 'boss'
         this.nextEventAt = this.progress + this.battle.rideDistance * 1.3
         this.spawnApproaching(true)
-        this.setMissionText('')
         sfx.omen()
         this.tweens.add({ targets: this, lookUpY: 26, duration: 1400, ease: 'Sine.easeInOut' })
       } else {
         this.pending = 'enemy'
         this.nextEventAt = this.progress + this.battle.rideDistance
         this.spawnApproaching(false)
-        this.setMissionText('')
       }
     }
     if (wasBoss) {
@@ -1160,7 +1150,6 @@ export class Ride25DScene extends Phaser.Scene {
     this.phase = 'finished'
     voice.cancel()
     this.clearBubbles()
-    this.setMissionText('')
     this.time.delayedCall(600, () => EventBus.emit('stage-failed', {
       stageId: this.stageData.id,
       difficulty: this.level,
@@ -1378,34 +1367,23 @@ export class Ride25DScene extends Phaser.Scene {
 
   // ================================================================== UI
 
+  /**
+   * 出題はすべて音声で伝えるため、文字のバーは出さない。
+   * 上部中央には「もう一度きく」🔊 ボタンだけを置く。
+   */
   private buildMissionBar(): void {
-    const width = 560
-    const bg = this.add.graphics()
-    bg.fillStyle(0xffffff, 0.94)
-    bg.fillRoundedRect(-width / 2, -37, width, 74, 26)
-    bg.lineStyle(4, 0xffc94d, 1)
-    bg.strokeRoundedRect(-width / 2, -37, width, 74, 26)
-    this.missionLabel = this.add.text(-24, 0, '', {
-      fontFamily: FONT, fontSize: '32px', fontStyle: 'bold', color: '#3a3a70',
-    }).setOrigin(0.5)
-    // もう一度きくボタン（子どもが押しやすい大きさ）
-    const speakerBg = this.add.circle(width / 2 - 50, 0, 34, 0xffc94d)
-    const speaker = this.add.text(width / 2 - 50, 1, '🔊', { fontSize: '36px' }).setOrigin(0.5)
-    speakerBg.setInteractive({ useHandCursor: true })
-    speakerBg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+    const bg = this.add.circle(0, 0, 40, 0xffc94d)
+    bg.setStrokeStyle(4, 0xffffff, 0.9)
+    const speaker = this.add.text(0, 1, '🔊', { fontSize: '42px' }).setOrigin(0.5)
+    bg.setInteractive({ useHandCursor: true })
+    bg.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
       event.stopPropagation()
       sfx.uiTap()
       this.speakPrompt()
     })
-    this.missionBar = this.add.container(GAME_W / 2, 52, [bg, this.missionLabel, speakerBg, speaker]).setDepth(8000)
+    this.missionBar = this.add.container(GAME_W / 2, 56, [bg, speaker]).setDepth(8000)
     this.missionBar.setScale(0)
     this.tweens.add({ targets: this.missionBar, scale: 1, duration: 320, ease: 'Back.easeOut' })
-  }
-
-  private setMissionText(text: string): void {
-    this.missionLabel.setText(text)
-    // 出題インストラクション以外は表示しない（空文字でバーごと隠す）
-    this.tweens.add({ targets: this.missionBar, alpha: text ? 1 : 0, duration: 200 })
   }
 
   private buildComboBadge(): void {
