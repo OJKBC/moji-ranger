@@ -26,6 +26,8 @@ export function CategoryScreen({ onSelect, onBack, onZukan }: Props) {
 
   return (
     <div className="map-screen category-screen">
+      {/* ㊽ 生きた背景（ゆっくり浮かぶ光の玉・CSSのみ・タップを邪魔しない） */}
+      <div className="fx-orbs" aria-hidden><span /><span /><span /><span /><span /><span /></div>
       <div className="map-header">
         <button className="icon-button" onClick={() => { sfx.uiTap(); onBack() }} aria-label="タイトルへ">
           🏠
@@ -38,7 +40,7 @@ export function CategoryScreen({ onSelect, onBack, onZukan }: Props) {
       </div>
 
       <div className="category-grid">
-        {CATEGORY_ORDER.map(cat => {
+        {CATEGORY_ORDER.map((cat, i) => {
           const meta = CATEGORY_META[cat]
           const stages = stagesInCategory(cat)
           const cleared = stages.filter(s => clearedLevelOf(progress, s.id) > 0).length
@@ -46,14 +48,17 @@ export function CategoryScreen({ onSelect, onBack, onZukan }: Props) {
             <button
               key={cat}
               className="category-card"
-              style={{ ['--cat-color' as string]: meta.color }}
+              style={{ ['--cat-color' as string]: meta.color, ['--d' as string]: `${i * 0.09}s` }}
               onClick={() => pick(cat)}
             >
-              <span className="category-icon">{meta.icon}</span>
+              <span className="category-icon-wrap">
+                <span className="category-icon">{meta.icon}</span>
+              </span>
               <span className="category-label">{meta.label}</span>
               <span className="category-progress">
                 {'★'.repeat(cleared)}{'☆'.repeat(Math.max(0, stages.length - cleared))}
               </span>
+              <span className="category-shine" aria-hidden />
             </button>
           )
         })}

@@ -1849,11 +1849,13 @@ export class Ride25DScene extends Phaser.Scene {
   private buildBuddy(): void {
     if (!this.buddyId || !this.textures.exists(`buddy-${this.buddyId}`)) return
     const tex = this.textures.get(`buddy-${this.buddyId}`).getSourceImage()
-    const scale = 90 / tex.height
-    const x = 96, y = GAME_H - 132
-    const ring = this.add.circle(0, 0, 50, 0xffffff, 0.14)
+    // ㊿ 存在感が出る程度に少し大きく（90→118）。左下の隅で、選択肢や操作は邪魔しない。
+    // 深度はバブル(6000)より下=5900 に置くので、文字・選択肢は常に最前面（原則を維持）。
+    const scale = 118 / tex.height
+    const x = 104, y = GAME_H - 122
+    const ring = this.add.circle(0, 0, 62, 0xffffff, 0.14)
     const img = this.add.image(0, 0, `buddy-${this.buddyId}`).setScale(scale)
-    const box = this.add.container(x, y, [ring, img]).setDepth(7000)
+    const box = this.add.container(x, y, [ring, img]).setDepth(5900)
     this.buddy = img
     this.buddyBase = scale
     // ふわふわ浮遊（箱ごと上下）＋本体をゆらゆら（生きている感じ・文字は最前面なので邪魔しない）
@@ -1871,7 +1873,7 @@ export class Ride25DScene extends Phaser.Scene {
     })
     const box = b.parentContainer
     if (box) {
-      const star = this.add.image(box.x, box.y - 42, 'star').setDepth(7001).setTint(0xffe066).setScale(0.2)
+      const star = this.add.image(box.x, box.y - 52, 'star').setDepth(5901).setTint(0xffe066).setScale(0.2)
       this.tweens.add({
         targets: star, y: box.y - 74, scale: 0.7, alpha: 0, duration: 520, ease: 'Cubic.easeOut',
         onComplete: () => star.destroy(),

@@ -6,12 +6,44 @@
  * 最初のタップ（タイトル画面のスタート）で unlock() を必ず呼ぶこと。
  */
 
+/** iOS 端末か（iPadOS の「Mac + タッチ」偽装も拾う） */
+function isIos(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent
+  return /iP(hone|ad|od)/.test(ua) || (/Macintosh/.test(ua) && typeof document !== 'undefined' && 'ontouchend' in document)
+}
+
+/**
+ * ㊼ マナーモード対策用の「無音WAV」データURI（ごく短い8bit無音・ループ再生する）。
+ * これを playsinline の <audio> で鳴らし続けると、一部のiOSでオーディオセッションが
+ * 「再生」カテゴリに寄り、WebAudio（効果音・読み上げクリップ）がマナーモードでも鳴ることがある。
+ * ※ 確実ではない（端末/OS次第）。鳴らない場合は保護者向け案内でフォローする。
+ */
+function silentWavDataUri(): string {
+  if (typeof window === 'undefined' || typeof btoa === 'undefined') return ''
+  const sr = 8000
+  const n = Math.floor(sr * 0.4)
+  const bytes = new Uint8Array(44 + n)
+  const dv = new DataView(bytes.buffer)
+  const wr = (o: number, s: string) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)) }
+  wr(0, 'RIFF'); dv.setUint32(4, 36 + n, true); wr(8, 'WAVE'); wr(12, 'fmt ')
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true)
+  dv.setUint32(24, sr, true); dv.setUint32(28, sr, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true)
+  wr(36, 'data'); dv.setUint32(40, n, true)
+  for (let i = 0; i < n; i++) bytes[44 + i] = 128 // 8bit PCM の無音は 128
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+  return `data:audio/wav;base64,${btoa(bin)}`
+}
+
 class SfxPlayer {
   private ctx: AudioContext | null = null
   private master: GainNode | null = null
   private noiseBuffer: AudioBuffer | null = null
   /** 同種音の直近再生時刻（連打でうるさくならないよう間引く） */
   private lastPlayAt: Record<string, number> = {}
+  /** ㊼ iOS マナーモード対策の無音ループ <audio>（再生セッションを保持する） */
+  private silentEl: HTMLAudioElement | null = null
   enabled = true
 
   /**
@@ -45,8 +77,36 @@ class SfxPlayer {
       for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume()
-    // 注意: 以前ここにあった「無音 <audio> 再生でサイレントスイッチを回避する」ハックは、
-    // オーディオセッションを切り替えて TTS（出題の声）を消してしまう副作用があったため撤去した。
+    // WebAudio 解錠: 無音バッファを1回鳴らす（多くのブラウザで初回に必要）
+    try {
+      const b = this.ctx.createBuffer(1, 1, 22050)
+      const s = this.ctx.createBufferSource()
+      s.buffer = b
+      s.connect(this.ctx.destination)
+      s.start(0)
+    } catch { /* 解錠できなくても以降の再生で resume を試みる */ }
+    // ㊼ iOS のマナーモード対策（できる範囲・確実ではない）。
+    // 無音ループ <audio> を playsinline で鳴らし、再生セッションを保持する。
+    // 過去に TTS を消した不具合があったため、WebAudio 本体（this.ctx）とは切り離した
+    // 独立の <audio> 要素にとどめ、iOS 端末に限定して副作用を最小化する。
+    if (this.enabled) this.holdIosPlaybackSession()
+  }
+
+  /** ㊼ iOS 限定: 無音ループの <audio> で再生セッションを保持する（best-effort） */
+  private holdIosPlaybackSession(): void {
+    if (!isIos()) return
+    if (this.silentEl) { void this.silentEl.play().catch(() => undefined); return }
+    try {
+      const el = document.createElement('audio')
+      el.setAttribute('playsinline', '')
+      el.setAttribute('webkit-playsinline', '')
+      el.loop = true
+      el.preload = 'auto'
+      el.volume = 0.01 // 実質無音（消音にすると効果が無いため、ごく小さい音量にする）
+      el.src = silentWavDataUri()
+      void el.play().catch(() => undefined)
+      this.silentEl = el
+    } catch { /* 使えない環境では無視（音は WebAudio 側で通常どおり鳴る） */ }
   }
 
   /**

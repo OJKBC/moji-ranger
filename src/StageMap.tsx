@@ -38,6 +38,10 @@ export function StageMap({ category, onSelect, onBack, onZukan }: Props) {
   const progress = loadProgress()
   const stages = stagesInCategory(category)
   const meta = CATEGORY_META[category]
+  // ㊽ 現在地＝最初の「解放済みでまだクリアしていない」ステージ（📍で強調）
+  const currentIndex = stages.findIndex(
+    s => isStageUnlocked(s, progress) && clearedLevelOf(progress, s.id) === 0,
+  )
 
   const handleSelect = (stage: Stage, unlocked: boolean) => {
     if (!unlocked) {
@@ -52,6 +56,7 @@ export function StageMap({ category, onSelect, onBack, onZukan }: Props) {
 
   return (
     <div className="map-screen">
+      <div className="fx-orbs" aria-hidden><span /><span /><span /><span /><span /><span /></div>
       <div className="map-header">
         <button className="icon-button" onClick={() => { sfx.uiTap(); onBack() }} aria-label="カテゴリへもどる">
           ⬅
@@ -74,14 +79,16 @@ export function StageMap({ category, onSelect, onBack, onZukan }: Props) {
           const isCleared = cleared > 0
           // 道の点灯: 先頭は常に点灯。以降は「前のステージをクリア済み」で点灯（道が伸びる）
           const prevCleared = i === 0 || clearedLevelOf(progress, stages[i - 1].id) > 0
+          const isCurrent = i === currentIndex
           const side = i % 2 === 0 ? 'left' : 'right'
           return (
-            <div key={stage.id} className={`path-step ${side}`}>
+            <div key={stage.id} className={`path-step ${side}`} style={{ ['--d' as string]: `${i * 0.08}s` }}>
               <span className={`path-link ${prevCleared ? 'lit' : ''}`} aria-hidden />
               <button
-                className={`path-node ${unlocked ? '' : 'locked'} ${isCleared ? 'cleared' : ''}`}
+                className={`path-node ${unlocked ? '' : 'locked'} ${isCleared ? 'cleared' : ''} ${isCurrent ? 'is-current' : ''}`}
                 onClick={() => handleSelect(stage, unlocked)}
               >
+                {isCurrent && <span className="path-here" aria-hidden>📍 いまここ</span>}
                 <span className="path-node-badge">{i + 1}</span>
                 <span className="path-node-icon">{unlocked ? STAGE_ICONS[stage.id] ?? '⭐' : '🔒'}</span>
                 <span className="path-node-name">{stage.title}</span>

@@ -167,6 +167,7 @@ export function Zukan({ onBack }: Props) {
       {selected && (
         <div className="zukan-modal" onClick={() => { sfx.uiTap(); setSelected(null) }}>
           <div className="zukan-modal-box">
+            {selected === buddy && <div className="buddy-badge-big">🤝 いま あいぼう中！</div>}
             <img className="zukan-modal-img" src={monsterImageUrl(selected)} alt="" />
             <p className="zukan-modal-name">{monsterName(selected)}</p>
             <button
@@ -176,12 +177,15 @@ export function Zukan({ onBack }: Props) {
             >
               🔊
             </button>
-            {/* ㊸ あいぼうに選ぶ（もう一度で解除） */}
+            {/* ㊾ あいぼうに選ぶ（もう一度で解除）。大きく・分かりやすく・押したくなるボタン */}
             <button
-              className={`sub-button buddy-button ${selected === buddy ? 'active' : ''}`}
+              className={`buddy-set-btn ${selected === buddy ? 'is-active' : ''}`}
               onClick={e => { e.stopPropagation(); chooseBuddy(selected) }}
             >
-              {selected === buddy ? '🤝 あいぼう ✓（かいじょ）' : '🤝 あいぼうに する'}
+              <span className="buddy-set-icon">{selected === buddy ? '✅' : '⭐'}</span>
+              <span className="buddy-set-text">
+                {selected === buddy ? 'あいぼうを やめる' : 'あいぼうに する！'}
+              </span>
             </button>
           </div>
         </div>
@@ -227,6 +231,11 @@ export function Zukan({ onBack }: Props) {
                 />
                 <button className="sub-button" onClick={onPasteRestore}>🔁 コードから もどす</button>
                 {notice && <p className="parent-note">{notice}</p>}
+                {/* ㊼ マナーモードの案内（保護者向け・控えめに） */}
+                <p className="parent-note parent-audio-note">
+                  🔈 音が出ないときは、iPhone の「マナーモード（サイレントスイッチ）」を
+                  解除してください。ブラウザでは自動で解除できないことがあります。
+                </p>
                 <button className="sub-button" onClick={() => { sfx.uiTap(); setParentStep('closed') }}>とじる</button>
               </>
             )}
