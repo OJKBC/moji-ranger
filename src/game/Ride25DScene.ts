@@ -731,7 +731,8 @@ export class Ride25DScene extends Phaser.Scene {
     }
     return {
       question: `${a}${op}${b}`,
-      voicePrompt: `${read(a)} ${op === '+' ? 'たす' : 'ひく'} ${read(b)} は？`,
+      // 「は？」は音声クリップで「ha」と読まれてしまうため「いくつ？」形式にする
+      voicePrompt: `${read(a)} ${op === '+' ? 'たす' : 'ひく'} ${read(b)}、いくつ？`,
       answer: String(answer),
       choices: [...choices],
     }
