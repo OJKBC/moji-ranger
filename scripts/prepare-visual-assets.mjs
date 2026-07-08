@@ -130,6 +130,25 @@ await processImage(findSrc('righthand.png', 'right hand.png'), 'righthand.png', 
 await processImage(findSrc('monster1.png', path.join('モンスター', 'よわい', 'monster1.png')), 'monster1.png', 640, (d, w, h) => floodKey(d, w, h, 42))
 await processImage(findSrc('bubble.png'), 'bubble.png', 300, keyGreen, { trim: true })
 
+// なかまボール4種（../画像/ボール/・緑ベタ背景）→ public/assets/balls/ へ
+// ファイル対応は撮影順: (1)=赤 (2)=青 (3)=黒×金 (4)=紫
+{
+  const BALLS_SRC = path.join(SRC, 'ボール')
+  const ballFiles = fs.readdirSync(BALLS_SRC).filter(f => f.endsWith('.png')).sort()
+  const names = ['ball-red.png', 'ball-blue.png', 'ball-black.png', 'ball-purple.png']
+  const BALLS_DST = path.join(DST, 'balls')
+  fs.mkdirSync(BALLS_DST, { recursive: true })
+  for (let i = 0; i < ballFiles.length && i < names.length; i++) {
+    const resized = sharp(path.join(BALLS_SRC, ballFiles[i])).resize({ width: 300 })
+    const { data, info } = await resized.ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    keyGreen(data)
+    await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } })
+      .png({ compressionLevel: 9, palette: true, quality: 92 })
+      .toFile(path.join(BALLS_DST, names[i]))
+    console.log(`balls/${names[i]} done`)
+  }
+}
+
 // hands.png（1枚に左右両腕・マゼンタ背景）→ 中央で左右に分割して個別スプライトに。
 // 分割する理由: 左右で別々の揺れ/押し出しアニメを付ける・画面隅への配置自由度のため。
 // 指先座標はコード側で比率指定するため trim しない。

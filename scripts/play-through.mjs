@@ -31,6 +31,15 @@ async function playLoop(name) {
   for (let step = 0; step < 60; step++) {
     const done = await page.$('.result-heading')
     if (done) break
+    // なかまボール: 投げ待ちになったら画面をタップして投げる
+    const cap = await page.evaluate(() => window.__captureState ?? 'idle')
+    if (cap === 'await-throw') {
+      const canvas = await page.$('canvas')
+      const box = await canvas.boundingBox()
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+      await sleep(1150)
+      continue
+    }
     const target = await page.evaluate(() => {
       const list = window.__debugTargets ?? []
       return list.find(t => t.correct) ?? null

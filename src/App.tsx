@@ -3,6 +3,7 @@ import { EventBus } from './EventBus'
 import { PhaserGame } from './game/PhaserGame'
 import { STAGES } from './data/stages'
 import { StageMap } from './StageMap'
+import { Zukan } from './Zukan'
 import { isStageUnlocked, loadProgress } from './store/progress'
 import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
@@ -12,7 +13,7 @@ import bgUrl from './assets/bg.jpg'
 /** タイトル画面に出す登場モンスター（public/assets/monsters/ から） */
 const monsterUrl = (file: string) => `${import.meta.env.BASE_URL}assets/monsters/${file}`
 
-type Screen = 'title' | 'map' | 'game' | 'result' | 'failed'
+type Screen = 'title' | 'map' | 'game' | 'result' | 'failed' | 'zukan'
 
 /** ライフ0時に Phaser から届く失敗情報 */
 interface StageFailed {
@@ -50,6 +51,14 @@ export default function App() {
   const [failInfo, setFailInfo] = useState<StageFailed | null>(null)
   const [confirmQuit, setConfirmQuit] = useState(false)
   const [playKey, setPlayKey] = useState(0)
+  /** ずかんを閉じたとき戻る画面（マップ or リザルト） */
+  const [zukanFrom, setZukanFrom] = useState<Screen>('map')
+
+  const openZukan = useCallback((from: Screen) => {
+    sfx.uiTap()
+    setZukanFrom(from)
+    setScreen('zukan')
+  }, [])
 
   useEffect(() => {
     // モバイルの音声解禁: 最初のタップに限らず、あらゆるユーザー操作で
@@ -144,7 +153,11 @@ export default function App() {
         </div>
       )}
 
-      {screen === 'map' && <StageMap onSelect={playStage} onBack={backToTitle} />}
+      {screen === 'map' && (
+        <StageMap onSelect={playStage} onBack={backToTitle} onZukan={() => openZukan('map')} />
+      )}
+
+      {screen === 'zukan' && <Zukan onBack={() => setScreen(zukanFrom)} />}
 
       {screen === 'game' && (
         <>
@@ -230,6 +243,9 @@ export default function App() {
             onClick={() => { sfx.uiTap(); playStage(stage, result.difficulty) }}
           >
             🔁 もういっかい
+          </button>
+          <button className="sub-button" onClick={() => openZukan('result')}>
+            📖 ずかんをみる
           </button>
           <button className="sub-button" onClick={() => { sfx.uiTap(); setScreen('map') }}>
             🗺️ ステージマップへ

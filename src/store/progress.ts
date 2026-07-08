@@ -1,7 +1,7 @@
 import type { DifficultyLevel, LetterStats, PlayerProgress, Stage, TargetKind } from '../types'
 
 const STORAGE_KEY = 'moji-ranger-progress'
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 4
 
 function defaultStats(): LetterStats {
   return { seen: 0, correct: 0, wrong: 0, avgReactionTime: 0, masteryLevel: 0 }
@@ -19,6 +19,8 @@ function defaultProgress(): PlayerProgress {
     mathStats: {},
     stageStars: {},
     stageLevels: {},
+    capturedMonsters: [],
+    captureFailCounts: {},
     totalStars: 0,
     playSessions: 0,
   }
@@ -30,6 +32,7 @@ function defaultProgress(): PlayerProgress {
  *   v1 → v2: stageStars を追加（v1 の totalStars は再計算されるため引き継がない）
  *   v2 → v3: stageLevels（ステージ×難易度のクリア状況）を追加。
  *            旧データで★のあるステージは「難易度1クリア済み」とみなす
+ *   v3 → v4: capturedMonsters（なかま）と captureFailCounts（pity 救済）を追加
  */
 export function loadProgress(): PlayerProgress {
   try {
@@ -47,6 +50,10 @@ export function loadProgress(): PlayerProgress {
       for (const [stageId, stars] of Object.entries(merged.stageStars)) {
         if (stars > 0) merged.stageLevels[stageId] = 1
       }
+    }
+    if ((parsed.schemaVersion ?? 1) < 4) {
+      merged.capturedMonsters = []
+      merged.captureFailCounts = {}
     }
     return merged
   } catch {
@@ -124,6 +131,35 @@ export function clearedLevelOf(progress: PlayerProgress, stageId: string): numbe
 /** そのステージで次に挑戦する難易度（全クリア後は3で遊び続けられる） */
 export function nextLevelOf(progress: PlayerProgress, stageId: string): DifficultyLevel {
   return Math.min(3, clearedLevelOf(progress, stageId) + 1) as DifficultyLevel
+}
+
+// ---- なかまボール（捕獲）関連 ----
+
+/** なかまにしているか */
+export function isCaptured(progress: PlayerProgress, monsterId: string): boolean {
+  return progress.capturedMonsters.includes(monsterId)
+}
+
+/** なかま成功を記録（失敗カウントもリセット） */
+export function recordCaptureSuccess(monsterId: string): void {
+  const progress = loadProgress()
+  if (!progress.capturedMonsters.includes(monsterId)) {
+    progress.capturedMonsters.push(monsterId)
+  }
+  delete progress.captureFailCounts[monsterId]
+  saveProgress(progress)
+}
+
+/** なかま失敗を記録（pity 救済のカウント） */
+export function recordCaptureFail(monsterId: string): void {
+  const progress = loadProgress()
+  progress.captureFailCounts[monsterId] = (progress.captureFailCounts[monsterId] ?? 0) + 1
+  saveProgress(progress)
+}
+
+/** そのモンスターの累計失敗回数（pity 判定用） */
+export function captureFailCount(progress: PlayerProgress, monsterId: string): number {
+  return progress.captureFailCounts[monsterId] ?? 0
 }
 
 /**

@@ -16,6 +16,7 @@ const STAGE_ICONS: Record<string, string> = {
 interface Props {
   onSelect: (stage: Stage, level: DifficultyLevel) => void
   onBack: () => void
+  onZukan: () => void
 }
 
 /**
@@ -24,7 +25,7 @@ interface Props {
  * 各ステージは難易度1→2→3の3段階。カードには難易度進捗バッジを表示し、
  * タップすると「次に挑戦する難易度」で始まる（全クリア後は3で遊べる）。
  */
-export function StageMap({ onSelect, onBack }: Props) {
+export function StageMap({ onSelect, onBack, onZukan }: Props) {
   const progress = loadProgress()
 
   const handleSelect = (stage: Stage, unlocked: boolean) => {
@@ -46,6 +47,10 @@ export function StageMap({ onSelect, onBack }: Props) {
           🏠
         </button>
         <h2 className="map-title">ステージをえらぼう！</h2>
+        {/* ずかん（読めない子にも分かるアイコン＋表記） */}
+        <button className="icon-button zukan-button" onClick={onZukan} aria-label="ずかん">
+          📖<span>ずかん</span>
+        </button>
         <div className="map-total">⭐ {progress.totalStars}</div>
       </div>
       <div className="map-grid">

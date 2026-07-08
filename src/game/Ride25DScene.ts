@@ -7,9 +7,15 @@ import { MONSTER_FILES } from './monsterManifest'
 import { MONSTER_TABLE } from '../data/monsters'
 import { wordsForLevel } from '../data/words'
 import type { WordSpec } from '../data/words'
+import { BALLS, PITY_FAILS, rollBall } from '../data/balls'
+import type { BallSpec } from '../data/balls'
+import { monsterName } from '../data/monsterNames'
 import { pickDistractors } from '../learning/distractors'
 import { pickNextLetter, pickTargetLetter } from '../learning/picker'
-import { recordAnswer, recordSeen, recordStageClear } from '../store/progress'
+import {
+  captureFailCount, isCaptured, loadProgress,
+  recordAnswer, recordCaptureFail, recordCaptureSuccess, recordSeen, recordStageClear,
+} from '../store/progress'
 import type { DifficultyLevel, MathLevelSpec, MathProblem, Stage, StageBattle, StageResult, TargetKind } from '../types'
 
 export const GAME_W = 960
@@ -142,6 +148,10 @@ export class Ride25DScene extends Phaser.Scene {
   private monsterKeys: { weak: string[]; strong: string[]; boss: string[] } = { weak: [], strong: [], boss: [] }
   private lastMonsterKey = ''
   private approachGroup: 'weak' | 'strong' = 'weak'
+  /** いま対峙しているボスのモンスターID（なかまボールの対象） */
+  private bossMonsterId = ''
+  /** なかまボール演出の進行状態（idle 以外は捕獲フロー中） */
+  private captureState: 'idle' | 'roulette' | 'await-throw' | 'throwing' | 'shaking' | 'result' = 'idle'
   private bubbles: ChoiceBubble[] = []
   private monster: Phaser.GameObjects.Image | null = null
   private mistPuffs: Phaser.GameObjects.Image[] = []
@@ -198,6 +208,11 @@ export class Ride25DScene extends Phaser.Scene {
     this.monsterKeys.weak = load(sample(MONSTER_FILES.weak, MONSTER_TABLE.sampleSize.weak))
     this.monsterKeys.strong = load(sample(MONSTER_FILES.strong, MONSTER_TABLE.sampleSize.strong))
     this.monsterKeys.boss = load(sample(MONSTER_FILES.boss, 1))
+
+    // なかまボール（ボス浄化後の捕獲演出用）
+    for (const b of BALLS) {
+      this.load.image(`ball-${b.id}`, `${import.meta.env.BASE_URL}assets/balls/${b.file}`)
+    }
   }
 
   /** 出現テーブル（data/monsters.ts）に従ってモンスターを1体選ぶ */
@@ -224,6 +239,8 @@ export class Ride25DScene extends Phaser.Scene {
     const candidates = pool.length > 1 ? pool.filter(k => k !== this.lastMonsterKey) : pool
     const key = candidates[Phaser.Math.Between(0, candidates.length - 1)]
     this.lastMonsterKey = key
+    // ボスは「なかまボール」の対象になるためモンスターIDを控える
+    if (isBoss) this.bossMonsterId = key.startsWith('mon-') ? key.slice(4) : 'monster1'
     return { key, group }
   }
 
@@ -999,17 +1016,6 @@ export class Ride25DScene extends Phaser.Scene {
     sparkle.explode(isBoss ? 30 : 16, m.x, m.y)
     this.time.delayedCall(1000, () => sparkle.destroy())
 
-    const riseDelay = isBoss ? 800 : 350
-    // 元気になったモンスターが光ごとふわっと空へ帰っていく
-    this.tweens.add({
-      targets: [m, glow], y: `-=240`, alpha: 0,
-      duration: 800, delay: riseDelay, ease: 'Sine.easeIn',
-    })
-    this.tweens.add({ targets: m, scale: m.scale * 0.8, duration: 800, delay: riseDelay, ease: 'Sine.easeIn' })
-    if (this.meterBox) {
-      this.tweens.add({ targets: this.meterBox, alpha: 0, duration: 300, delay: riseDelay })
-    }
-
     // この対峙のオブジェクトをローカルに引き取り、フィールドは即リセット
     // （演出中に次の対峙が始まっても競合しない）
     const puffs = this.mistPuffs
@@ -1018,6 +1024,33 @@ export class Ride25DScene extends Phaser.Scene {
     this.meterBox = null
     this.meterCells = []
     this.monster = null
+    if (meterBox) {
+      this.tweens.add({ targets: meterBox, alpha: 0, duration: 300, delay: 350 })
+    }
+
+    // ボス（未なかま）は浄化後に「なかまボール」のチャンス！
+    if (isBoss && this.bossMonsterId && !isCaptured(loadProgress(), this.bossMonsterId)) {
+      this.acceptInput = false
+      this.time.delayedCall(1100, () => this.startCaptureFlow(m, glow, this.bossMonsterId))
+      this.time.delayedCall(1300, () => {
+        puffs.forEach(p => p.destroy())
+        meterBox?.destroy()
+      })
+      return
+    }
+
+    // すでになかまのボスは軽いあいさつだけ（二重捕獲はしない）
+    if (isBoss && this.bossMonsterId) {
+      this.time.delayedCall(700, () => voice.speak('もうなかまだよ！'))
+    }
+
+    const riseDelay = isBoss ? 800 : 350
+    // 元気になったモンスターが光ごとふわっと空へ帰っていく
+    this.tweens.add({
+      targets: [m, glow], y: `-=240`, alpha: 0,
+      duration: 800, delay: riseDelay, ease: 'Sine.easeIn',
+    })
+    this.tweens.add({ targets: m, scale: m.scale * 0.8, duration: 800, delay: riseDelay, ease: 'Sine.easeIn' })
 
     // 演出の途中で前進を再開する（笑顔が空へ帰るのを見ながら次へ＝待ち時間ゼロ）
     this.time.delayedCall(isBoss ? 1800 : 550, () => this.afterPurify(isBoss))
@@ -1027,6 +1060,265 @@ export class Ride25DScene extends Phaser.Scene {
       puffs.forEach(p => p.destroy())
       meterBox?.destroy()
     })
+  }
+
+  // ======================================================== なかまボール（捕獲）
+
+  private updateCaptureHook(ball?: BallSpec): void {
+    if (import.meta.env.DEV) {
+      const w = window as unknown as Record<string, unknown>
+      w.__captureState = this.captureState
+      if (ball) w.__captureBall = ball.id
+    }
+  }
+
+  /**
+   * ボス浄化後の「なかまボール」フロー:
+   * ルーレット → タップで投げる → 吸い込み → 3回揺れ → 判定 → 進行再開。
+   * 出現重み・成功率・pity は data/balls.ts と progress の失敗カウントで決まる。
+   */
+  private startCaptureFlow(m: Phaser.GameObjects.Image, glow: Phaser.GameObjects.Image, monsterId: string): void {
+    this.captureState = 'roulette'
+    this.tweens.killTweensOf(m) // 浮遊バウンドを止める（吸い込み移動と競合させない）
+    // ルーレットの結果を先に決める（pity: 2回失敗していたら必ず紫＝実質確定）
+    const pity = captureFailCount(loadProgress(), monsterId) >= PITY_FAILS
+    let chosen = rollBall(pity)
+    if (import.meta.env.DEV) {
+      const force = (window as unknown as Record<string, unknown>).__forceBall
+      const forced = BALLS.find(b => b.id === force)
+      if (forced) chosen = forced
+    }
+    this.updateCaptureHook(chosen)
+
+    // 4つのボールを並べてハイライトが巡回（加速→減速して chosen に止まる）
+    const rowY = 470
+    const spacing = 150
+    const sprites = BALLS.map((b, i) => {
+      const s = this.add.image(GAME_W / 2 + (i - (BALLS.length - 1) / 2) * spacing, rowY, `ball-${b.id}`)
+        .setDepth(8200).setScale(0)
+      this.tweens.add({ targets: s, scale: 0.42, duration: 220, delay: i * 60, ease: 'Back.easeOut' })
+      return s
+    })
+    const hl = this.add.image(sprites[0].x, rowY, 'softglow')
+      .setDepth(8190).setScale(1).setTint(0xffffff).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.9)
+
+    const chosenIndex = BALLS.findIndex(b => b.id === chosen.id)
+    // 巡回ステップ列: 最後が chosenIndex で終わるよう回数を調整（計 ~2.5秒）
+    const totalSteps = 12 + ((chosenIndex - 12 % BALLS.length) + BALLS.length) % BALLS.length
+    let step = 0
+    const tick = () => {
+      const i = step % BALLS.length
+      hl.setPosition(sprites[i].x, rowY)
+      sprites.forEach((s, j) => s.setScale(j === i ? 0.5 : 0.42))
+      sfx.rouletteTick(step)
+      step++
+      if (step <= totalSteps) {
+        // 前半は速く、終盤にかけてゆっくり
+        const progress = step / totalSteps
+        const delay = 70 + Math.pow(progress, 2.2) * 300
+        this.time.delayedCall(delay, tick)
+      } else {
+        this.onRouletteStop(sprites, hl, chosen, chosenIndex, m, glow, monsterId)
+      }
+    }
+    this.time.delayedCall(500, tick)
+  }
+
+  /** ルーレット停止 → ボール名の発表 → 画面下に登場してタップ待ち */
+  private onRouletteStop(
+    sprites: Phaser.GameObjects.Image[], hl: Phaser.GameObjects.Image,
+    chosen: BallSpec, chosenIndex: number,
+    m: Phaser.GameObjects.Image, glow: Phaser.GameObjects.Image, monsterId: string,
+  ): void {
+    sfx.rouletteStop()
+    voice.speak(`${chosen.name}だ！`)
+    const winner = sprites[chosenIndex]
+    // 止まった瞬間のフラッシュ
+    const flash = this.add.image(winner.x, winner.y, 'softglow')
+      .setDepth(8210).setScale(0.6).setTint(chosen.trailColor).setBlendMode(Phaser.BlendModes.ADD)
+    this.tweens.add({ targets: flash, scale: 2.2, alpha: 0, duration: 450, onComplete: () => flash.destroy() })
+    if (chosen.rainbow) {
+      // 紫は特別！ 虹の星バースト＋豪華ファンファーレ
+      sfx.specialFanfare()
+      const rainbow = this.add.particles(0, 0, 'star', {
+        speed: { min: 120, max: 340 }, scale: { start: 1.1, end: 0 },
+        rotate: { min: 0, max: 360 }, lifespan: 1000,
+        tint: [0xff5a5a, 0xffb347, 0xffe066, 0x7ddf7d, 0x4db2ff, 0xc07bff], emitting: false,
+      }).setDepth(8210)
+      rainbow.explode(36, winner.x, winner.y)
+      this.time.delayedCall(1200, () => rainbow.destroy())
+    }
+    // 外れたボールは退場、当たりは画面下中央へ（軽くバウンドして注目）
+    sprites.forEach((s, i) => {
+      if (i !== chosenIndex) this.tweens.add({ targets: s, alpha: 0, scale: 0.2, duration: 300, onComplete: () => s.destroy() })
+    })
+    this.tweens.add({ targets: hl, alpha: 0, duration: 300, onComplete: () => hl.destroy() })
+    this.tweens.add({
+      targets: winner, x: GAME_W / 2, y: 560, scale: 0.55, duration: 500, delay: 600, ease: 'Sine.easeInOut',
+      onComplete: () => {
+        this.tweens.add({ targets: winner, y: 548, duration: 380, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+        this.captureState = 'await-throw'
+        this.updateCaptureHook(chosen)
+        // ボールでも画面のどこでも、タップで投げられる
+        winner.setInteractive({ useHandCursor: true })
+        const throwNow = () => {
+          if (this.captureState !== 'await-throw') return
+          this.captureState = 'throwing'
+          this.updateCaptureHook(chosen)
+          this.input.off('pointerdown', throwNow)
+          this.throwCaptureBall(winner, chosen, m, glow, monsterId)
+        }
+        winner.on('pointerdown', throwNow)
+        this.input.on('pointerdown', throwNow)
+      },
+    })
+  }
+
+  /** ボールを放物線で投げる → モンスターが光になって吸い込まれる → 3回揺れ → 判定 */
+  private throwCaptureBall(
+    ball: Phaser.GameObjects.Image, chosen: BallSpec,
+    m: Phaser.GameObjects.Image, glow: Phaser.GameObjects.Image, monsterId: string,
+  ): void {
+    sfx.throwBall()
+    this.tweens.killTweensOf(ball)
+    const sx = ball.x, sy = ball.y
+    const tx = m.x, ty = m.y
+    // 軌跡の光（ボールの色。紫は虹色）
+    const trail = this.add.particles(0, 0, 'dot', {
+      speed: { min: 8, max: 40 }, scale: { start: 0.55, end: 0 }, lifespan: 420,
+      tint: chosen.rainbow
+        ? [0xff5a5a, 0xffe066, 0x7ddf7d, 0x4db2ff, 0xc07bff]
+        : [chosen.trailColor, 0xffffff],
+      blendMode: 'ADD', frequency: 18,
+    }).setDepth(8195).startFollow(ball)
+    const flight = { t: 0 }
+    this.tweens.add({
+      targets: flight, t: 1, duration: 650, ease: 'Sine.easeOut',
+      onUpdate: () => {
+        ball.x = sx + (tx - sx) * flight.t
+        ball.y = sy + (ty - sy) * flight.t - Math.sin(Math.PI * flight.t) * 200
+        ball.angle += 9
+      },
+      onComplete: () => {
+        trail.stop()
+        this.time.delayedCall(500, () => trail.destroy())
+        // モンスターが光になってボールに吸い込まれる
+        sfx.suck()
+        m.setTintFill() // 引数なし=白（光のシルエットになる）
+        this.tweens.add({ targets: m, scale: 0.02, x: ball.x, y: ball.y, alpha: 0.9, duration: 520, ease: 'Cubic.easeIn' })
+        this.tweens.add({ targets: glow, alpha: 0, scale: 0.4, duration: 500 })
+        this.time.delayedCall(560, () => {
+          m.setVisible(false)
+          const pop = this.add.image(ball.x, ball.y, 'softglow')
+            .setDepth(8210).setScale(0.4).setTint(0xffffff).setBlendMode(Phaser.BlendModes.ADD)
+          this.tweens.add({ targets: pop, scale: 1.4, alpha: 0, duration: 350, onComplete: () => pop.destroy() })
+          this.shakeCaptureBall(ball, chosen, m, glow, monsterId)
+        })
+      },
+    })
+  }
+
+  /** ボールが3回揺れる（1回ごとに間を置き、音程が上がってドキドキ感） */
+  private shakeCaptureBall(
+    ball: Phaser.GameObjects.Image, chosen: BallSpec,
+    m: Phaser.GameObjects.Image, glow: Phaser.GameObjects.Image, monsterId: string,
+  ): void {
+    this.captureState = 'shaking'
+    this.updateCaptureHook(chosen)
+    for (let i = 0; i < 3; i++) {
+      this.time.delayedCall(500 + i * 850, () => {
+        sfx.ballShake(i)
+        this.tweens.add({ targets: ball, angle: -16, duration: 90, yoyo: true, repeat: 3, ease: 'Sine.easeInOut' })
+      })
+    }
+    this.time.delayedCall(500 + 3 * 850, () => {
+      // 判定（pity 中は紫が選ばれているので successRate=1.0 で必ず成功）
+      let success = Math.random() < chosen.successRate
+      if (import.meta.env.DEV) {
+        const force = (window as unknown as Record<string, unknown>).__forceCapture
+        if (typeof force === 'boolean') success = force
+      }
+      if (success) {
+        this.captureSucceeded(ball, monsterId, m, glow)
+      } else {
+        this.captureFailed(ball, monsterId, m, glow)
+      }
+    })
+  }
+
+  /** 成功: キラーン＋ロック＋星の紙吹雪＋名前の読み上げ */
+  private captureSucceeded(
+    ball: Phaser.GameObjects.Image, monsterId: string,
+    m: Phaser.GameObjects.Image, glow: Phaser.GameObjects.Image,
+  ): void {
+    this.captureState = 'result'
+    this.updateCaptureHook()
+    recordCaptureSuccess(monsterId)
+    sfx.captureSuccess()
+    const lockRing = this.add.image(ball.x, ball.y, 'ring')
+      .setDepth(8210).setTint(0xffe066).setScale(0.6)
+    this.tweens.add({ targets: lockRing, scale: 2.4, alpha: 0, duration: 600, onComplete: () => lockRing.destroy() })
+    this.tweens.add({ targets: ball, scale: ball.scale * 1.2, duration: 160, yoyo: true })
+    const confetti = this.add.particles(0, 0, 'star', {
+      speed: { min: 100, max: 320 }, scale: { start: 1, end: 0 },
+      rotate: { min: 0, max: 360 }, lifespan: 1000,
+      tint: [0xffe066, 0xffffff, 0xff8fd0, 0x9ff3ff], emitting: false,
+    }).setDepth(8210)
+    confetti.explode(30, ball.x, ball.y)
+    const label = this.showCaptureText('なかまになった！', 0xffe066)
+    voice.speak(`${monsterName(monsterId)}、なかまになった！`)
+    this.time.delayedCall(2100, () => {
+      confetti.destroy()
+      label.destroy()
+      this.finishCaptureFlow([ball, m, glow])
+    })
+  }
+
+  /** 失敗: ボールがポンと開き、にこにこ手を振りながら空へ帰る（やさしい表現） */
+  private captureFailed(
+    ball: Phaser.GameObjects.Image, monsterId: string,
+    m: Phaser.GameObjects.Image, glow: Phaser.GameObjects.Image,
+  ): void {
+    this.captureState = 'result'
+    this.updateCaptureHook()
+    recordCaptureFail(monsterId)
+    sfx.escapePop()
+    const pop = this.add.image(ball.x, ball.y, 'softglow')
+      .setDepth(8210).setScale(0.5).setTint(0xffffff).setBlendMode(Phaser.BlendModes.ADD)
+    this.tweens.add({ targets: pop, scale: 1.8, alpha: 0, duration: 400, onComplete: () => pop.destroy() })
+    this.tweens.add({ targets: ball, alpha: 0, scale: 0.3, duration: 350 })
+    // モンスターが元気に出てきて、手を振りながら（左右にゆれながら）空へ帰る
+    m.setVisible(true).setAlpha(1).clearTint()
+    const outScale = this.monsterScaleFor(m.texture.key, true) * 0.8
+    this.tweens.add({ targets: m, scale: outScale, x: GAME_W / 2, y: 240, duration: 450, ease: 'Back.easeOut' })
+    this.tweens.add({ targets: m, angle: -8, duration: 260, delay: 500, yoyo: true, repeat: 3, ease: 'Sine.easeInOut' })
+    this.tweens.add({ targets: m, y: -180, alpha: 0, duration: 1000, delay: 1600, ease: 'Sine.easeIn' })
+    const label = this.showCaptureText('にげられちゃった！ また あそぼうね', 0x9ff3ff)
+    voice.speak('にげられちゃった！またあそぼうね')
+    this.time.delayedCall(2600, () => {
+      label.destroy()
+      this.finishCaptureFlow([ball, m, glow])
+    })
+  }
+
+  /** 捕獲フローの後片付け → 進行再開（ゴールへ） */
+  private finishCaptureFlow(objects: Phaser.GameObjects.GameObject[]): void {
+    this.captureState = 'idle'
+    this.updateCaptureHook()
+    this.acceptInput = true
+    for (const o of objects) o.destroy()
+    this.afterPurify(true)
+  }
+
+  /** 捕獲結果のテキスト表示（画面中央下・モンスターを隠さない） */
+  private showCaptureText(text: string, tint: number): Phaser.GameObjects.Text {
+    const label = this.add.text(GAME_W / 2, 430, text, {
+      fontFamily: FONT, fontSize: '46px', fontStyle: 'bold', color: '#ffffff',
+    }).setOrigin(0.5).setDepth(8500).setStroke('#3a3a70', 10).setScale(0)
+    label.setTint(tint)
+    label.setShadow(0, 4, 'rgba(40,20,80,0.5)', 8)
+    this.tweens.add({ targets: label, scale: 1, duration: 280, ease: 'Back.easeOut' })
+    return label
   }
 
   /** 浄化後の進行: 次の敵 → （規定体数で）ボス → ゴール */

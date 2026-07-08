@@ -186,6 +186,10 @@ export interface PlayerProgress {
   stageStars: Record<string, number>
   /** ステージごとのクリア済み最高難易度 0〜3（schemaVersion 3 で追加） */
   stageLevels: Record<string, number>
+  /** なかまにしたモンスターのID一覧（schemaVersion 4 で追加） */
+  capturedMonsters: string[]
+  /** なかま失敗回数（モンスターIDごと・pity 救済用。schemaVersion 4 で追加） */
+  captureFailCounts: Record<string, number>
   /** 全ステージのベスト★合計 */
   totalStars: number
   playSessions: number

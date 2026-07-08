@@ -43,8 +43,26 @@ const WORDS = [
   'りんご', 'みかん', 'すいか', 'さかな', 'うさぎ',
   'くだもの', 'ひまわり', 'にわとり', 'かまきり',
 ]
+/** モンスターの名前（src/data/monsterNames.ts と同期させること） */
+const MONSTER_NAMES = [
+  'りゅうたん', 'かぶとん', 'ぱたぱた', 'いわごろ', 'とげまる', 'ぷにぷに',
+  'いたずらん', 'もふにゃん', 'きのこん', 'ぷるりん', 'がおたん',
+  'えんまおう', 'あおきば', 'やみりゅう', 'もりのぬし', 'わにごん', 'むらさきまる',
+  'きんりゅう', 'がぶりん', 'おにごろう', 'ようがんまる', 'まどうし', 'こがねりゅう',
+  'あかづのまる', 'りゅうきし', 'やみのおう',
+]
+
 /** フレーズ。キー=トークン / 値=読み上げに使うテキスト（読みを明示したいとき用） */
 const PHRASES = {
+  // なかまボール（src/data/balls.ts と同期させること）
+  'あかボールだ': 'あかボールだ！',
+  'あおボールだ': 'あおボールだ！',
+  'ブラックボールだ': 'ブラックボールだ！',
+  'むらさきボールだ': 'むらさきボールだ！',
+  'なかまになった': 'なかまになった！',
+  'にげられちゃった': 'にげられちゃった！',
+  'またあそぼうね': 'また、あそぼうね！',
+  'もうなかまだよ': 'もう、なかまだよ！',
   'つぎは': 'つぎは！',
   'まずは': 'まずは！',
   'これは': 'これは',
@@ -68,6 +86,7 @@ const jobs = []
 for (const t of [...HIRA, ...KATA]) jobs.push({ token: t, text: `${t}！`, rate: '-10%' })
 for (const t of DIGITS) jobs.push({ token: t, text: `${t}`, rate: '-10%' })
 for (const t of WORDS) jobs.push({ token: t, text: `${t}！`, rate: '+0%' })
+for (const t of MONSTER_NAMES) jobs.push({ token: t, text: `${t}！`, rate: '+0%' })
 for (const [token, text] of Object.entries(PHRASES)) jobs.push({ token, text, rate: '-5%' })
 
 const tts = new MsEdgeTTS()

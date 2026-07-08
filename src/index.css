@@ -471,3 +471,126 @@ body {
     0 4px 0 #7a4dff,
     0 8px 18px rgba(0, 0, 0, 0.45);
 }
+
+/* ---- ずかん（図鑑） ---- */
+
+.zukan-button {
+  width: auto;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: bold;
+}
+
+.zukan-button span {
+  font-size: clamp(13px, 3vw, 17px);
+  color: #ffffff;
+}
+
+.zukan-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.zukan-count img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+
+.zukan-grid {
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+}
+
+.zukan-card {
+  font-family: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px 10px;
+  border: none;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #fffdf5, #ffe9c2);
+  box-shadow: 0 4px 0 #d6a24d, 0 8px 16px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+}
+
+.zukan-card:active {
+  transform: translateY(2px);
+}
+
+.zukan-img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+}
+
+.zukan-name {
+  font-size: clamp(14px, 3vw, 17px);
+  font-weight: bold;
+  color: #3a3a70;
+}
+
+/* まだなかまでない: 明るい「？」カード（暗転・シルエットにしない） */
+.zukan-unknown {
+  background: linear-gradient(180deg, #efe9ff, #d8ccff);
+  box-shadow: 0 4px 0 #a48ee0, 0 8px 16px rgba(0, 0, 0, 0.25);
+  justify-content: center;
+  min-height: 130px;
+  cursor: default;
+}
+
+.zukan-q {
+  font-size: clamp(44px, 9vw, 60px);
+  font-weight: bold;
+  color: #7a4dff;
+  text-shadow: 0 3px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* タップで大きく表示（なまえ読み上げつき） */
+.zukan-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 6, 30, 0.6);
+  backdrop-filter: blur(2px);
+}
+
+.zukan-modal-box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(86vw, 420px);
+  padding: 26px 22px;
+  border-radius: 28px;
+  background: linear-gradient(180deg, #fffdf5, #ffe9c2);
+  box-shadow: 0 8px 0 #d6a24d, 0 16px 30px rgba(0, 0, 0, 0.4);
+}
+
+.zukan-modal-img {
+  width: min(60vw, 300px);
+  aspect-ratio: 1;
+  object-fit: contain;
+}
+
+.zukan-modal-name {
+  font-size: clamp(24px, 6vw, 32px);
+  font-weight: bold;
+  color: #3a3a70;
+}
+
+.zukan-speak {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: #ffc94d;
+  border: none;
+}

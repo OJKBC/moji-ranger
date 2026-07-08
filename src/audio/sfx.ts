@@ -172,6 +172,68 @@ class SfxPlayer {
     this.tone('sine', 700, 900, 0.07, 0.1)
   }
 
+  // ---- なかまボール（捕獲演出）用 ----
+
+  /** ルーレットの切替カチッ音（step が進むほど音程が上がる） */
+  rouletteTick(step: number): void {
+    const f = 900 + (step % 8) * 60
+    this.tone('square', f, f, 0.04, 0.08)
+    this.noise(0.02, 0.1, 3200)
+  }
+
+  /** ルーレットが止まった瞬間のジャーン */
+  rouletteStop(): void {
+    this.tone('triangle', 523, 523, 0.3, 0.16)
+    this.tone('triangle', 659, 659, 0.35, 0.14, 0.04)
+    this.tone('triangle', 784, 784, 0.45, 0.14, 0.08)
+    this.noise(0.2, 0.2, 2200)
+  }
+
+  /** 紫ボール登場の特別ファンファーレ（虹エフェクトと同期） */
+  specialFanfare(): void {
+    const seq: Array<[number, number]> = [[523, 0], [659, 0.1], [784, 0.2], [1046, 0.3], [1318, 0.42], [1568, 0.56]]
+    seq.forEach(([f, d]) => this.tone('triangle', f, f, 0.32, 0.16, d))
+    this.noise(0.5, 0.14, 3000, 0.2)
+    this.tone('sine', 2093, 2637, 0.4, 0.1, 0.7)
+  }
+
+  /** ボールを投げるヒュッ */
+  throwBall(): void {
+    this.noise(0.16, 0.3, 1600)
+    this.tone('sine', 700, 1300, 0.16, 0.12)
+  }
+
+  /** モンスターが光になって吸い込まれるキュイーン */
+  suck(): void {
+    this.tone('sine', 400, 1800, 0.4, 0.16)
+    this.tone('sine', 600, 2400, 0.35, 0.1, 0.05)
+    this.noise(0.3, 0.12, 2600, 0.08)
+  }
+
+  /** ボールの揺れ（i=0,1,2 と少しずつ音程が上がってドキドキ感） */
+  ballShake(i: number): void {
+    const f = 300 + i * 90
+    this.tone('triangle', f, f * 0.85, 0.16, 0.2)
+    this.noise(0.06, 0.14, 900, 0.02)
+  }
+
+  /** なかま成功のキラーン＋ロック */
+  captureSuccess(): void {
+    this.tone('sine', 1568, 2093, 0.18, 0.14)
+    this.tone('triangle', 784, 784, 0.16, 0.14, 0.05)
+    const seq: Array<[number, number]> = [[659, 0.2], [784, 0.32], [1046, 0.44], [1318, 0.6]]
+    seq.forEach(([f, d]) => this.tone('triangle', f, f, 0.3, 0.16, d))
+    this.noise(0.4, 0.12, 3200, 0.2)
+  }
+
+  /** 失敗（にげられた）: やさしいポン＋にこにこ帰っていく明るい音 */
+  escapePop(): void {
+    this.noise(0.08, 0.25, 1200)
+    this.tone('sine', 500, 350, 0.18, 0.14)
+    // 悲しくならない、ふわっと明るい別れの音
+    this.tone('sine', 784, 1046, 0.3, 0.08, 0.3)
+  }
+
   /** ボス出現の予兆（少しこわい緊張感。地鳴り＋不穏な半音のうねり） */
   omen(): void {
     this.tone('triangle', 90, 55, 0.8, 0.24) // 低い地鳴り
