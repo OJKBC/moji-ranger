@@ -1,20 +1,22 @@
 import { useCallback, useEffect, useState } from 'react'
 import { EventBus } from './EventBus'
 import { PhaserGame } from './game/PhaserGame'
-import { STAGES } from './data/stages'
+import { STAGES, categoryOf } from './data/stages'
 import { StageMap } from './StageMap'
+import { CategoryScreen } from './CategoryScreen'
+import { LoginBonus } from './LoginBonus'
 import { Zukan } from './Zukan'
-import { isStageUnlocked, loadProgress } from './store/progress'
+import { canClaimBonus, isStageUnlocked, loadProgress } from './store/progress'
 import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
 import { MAX_DIFFICULTY } from './types'
-import type { DifficultyLevel, Stage, StageResult } from './types'
+import type { DifficultyLevel, Stage, StageCategory, StageResult } from './types'
 import bgUrl from './assets/bg.jpg'
 
 /** タイトル画面に出す登場モンスター（public/assets/monsters/ から） */
 const monsterUrl = (file: string) => `${import.meta.env.BASE_URL}assets/monsters/${file}`
 
-type Screen = 'title' | 'map' | 'game' | 'result' | 'failed' | 'zukan'
+type Screen = 'title' | 'category' | 'map' | 'game' | 'result' | 'failed' | 'zukan'
 
 /** ライフ0時に Phaser から届く失敗情報 */
 interface StageFailed {
@@ -54,8 +56,12 @@ export default function App() {
   const [playKey, setPlayKey] = useState(0)
   /** このステージで新しくなかまが増えた（リザルトで控えめにバックアップを促す） */
   const [capturedThisRun, setCapturedThisRun] = useState(false)
-  /** ずかんを閉じたとき戻る画面（マップ or リザルト） */
-  const [zukanFrom, setZukanFrom] = useState<Screen>('map')
+  /** ずかんを閉じたとき戻る画面（カテゴリ or マップ or リザルト） */
+  const [zukanFrom, setZukanFrom] = useState<Screen>('category')
+  /** ㊺ 選択中の大枠カテゴリ（にほんご/えいご/さんすう） */
+  const [category, setCategory] = useState<StageCategory>('jp')
+  /** ㊷ ログインボーナス表示中か（1日1回・その日はじめて開いたとき） */
+  const [bonusOpen, setBonusOpen] = useState(false)
 
   const openZukan = useCallback((from: Screen) => {
     sfx.uiTap()
@@ -94,17 +100,25 @@ export default function App() {
     }
   }, [])
 
-  const openMap = useCallback(() => {
+  const openCategory = useCallback(() => {
     // 最初のユーザー操作の中で音声をアンロックする（iOS/Android 対策）
     sfx.unlock()
     voice.init()
     sfx.uiTap()
+    // ㊷ その日はじめて開いたときだけログインボーナス（逃してもペナルティなし）
+    if (canClaimBonus()) setBonusOpen(true)
+    setScreen('category')
+  }, [])
+
+  const chooseCategory = useCallback((cat: StageCategory) => {
+    setCategory(cat)
     setScreen('map')
   }, [])
 
   const playStage = useCallback((s: Stage, level: DifficultyLevel) => {
     setStage(s)
     setDifficulty(level)
+    setCategory(categoryOf(s)) // 地図と直前に遊んだステージのカテゴリを合わせる
     setConfirmQuit(false)
     setCapturedThisRun(false)
     setPlayKey(k => k + 1)
@@ -153,18 +167,39 @@ export default function App() {
             <span>ビームアカデミー</span>
           </h1>
           <p className="title-sub">ひらがな・カタカナ・ことば・さんすう</p>
-          <button className="big-button title-start" onClick={openMap}>
+          <button className="big-button title-start" onClick={openCategory}>
             ▶ スタート
           </button>
           <p className="title-note">おとが でるよ 🔊</p>
         </div>
       )}
 
+      {screen === 'category' && (
+        <CategoryScreen
+          onSelect={chooseCategory}
+          onBack={backToTitle}
+          onZukan={() => openZukan('category')}
+        />
+      )}
+
       {screen === 'map' && (
-        <StageMap onSelect={playStage} onBack={backToTitle} onZukan={() => openZukan('map')} />
+        <StageMap
+          category={category}
+          onSelect={playStage}
+          onBack={() => { sfx.uiTap(); setScreen('category') }}
+          onZukan={() => openZukan('map')}
+        />
       )}
 
       {screen === 'zukan' && <Zukan onBack={() => setScreen(zukanFrom)} />}
+
+      {/* ㊷ ログインボーナス（1日1回・カテゴリ画面の上に重ねて出す） */}
+      {bonusOpen && (
+        <LoginBonus
+          onCaptured={() => setCapturedThisRun(true)}
+          onClose={() => setBonusOpen(false)}
+        />
+      )}
 
       {screen === 'game' && (
         <>

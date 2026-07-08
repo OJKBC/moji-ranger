@@ -44,6 +44,14 @@ const DIGITS = ['いち', 'に', 'さん', 'よん', 'ご', 'ろく', 'なな', 
 const readFile = rel => fs.readFileSync(path.join(root, '..', rel), 'utf8')
 const wordsSrc = readFile('src/data/words.ts')
 const englishSrc = readFile('src/data/english.ts')
+// ㊻ 読みマップ（src/data/reading.ts）の ja 上書きを取り込む。
+//    生の文字（は/へ/を 等）を、誤読しない読み（ハ/ヘ/ヲ）でクリップ生成する。
+//    キーは生の文字のまま（VOICE_CLIPS のキーは変えない）＝再生側のルックアップは不変。
+const readingSrc = readFile('src/data/reading.ts')
+const JA_READING = {}
+for (const m of readingSrc.matchAll(/'?([^':{}\s]+)'?:\s*\{\s*text:\s*'([^']+)',\s*lang:\s*'ja'\s*\}/g)) {
+  JA_READING[m[1]] = m[2]
+}
 /** words.ts の単語（ひらがな）＋ english.ts の meaning（ひらがな）を読み上げ対象にする */
 const WORDS = [...new Set([
   ...[...wordsSrc.matchAll(/word:\s*'([^']+)'/g)].map(m => m[1]),
@@ -106,6 +114,15 @@ const PHRASES = {
   'まえの': 'まえの',
   'ステージを': 'ステージを',
   'クリアしてね': 'クリアしてね！',
+  // ㊺ 大枠カテゴリの読み上げ
+  'にほんご': 'にほんご！',
+  'えいご': 'えいご！',
+  'さんすう': 'さんすう！',
+  // ㊷ ログインボーナス
+  'ログインボーナス': 'ログインボーナス！',
+  'きょうのボーナス': 'きょうの、ボーナス！',
+  // ㊸ あいぼう
+  'あいぼうにするね': 'あいぼうに、するね！',
 }
 
 /**
@@ -123,7 +140,8 @@ const slug = token => [...token].map(c => c.codePointAt(0).toString(16)).join('-
 
 // テンポ最優先: 普通の速さで発音させる（遅くしすぎると「し・・か・・」と間延びする）
 const jobs = []
-for (const t of [...HIRA, ...KATA]) jobs.push({ token: t, text: `${t}！`, rate: '-10%' })
+// ㊻ 生成テキストは読みマップで上書き（は→ハ 等）。token（＝ファイル名/キー）は生の文字のまま
+for (const t of [...HIRA, ...KATA]) jobs.push({ token: t, text: `${JA_READING[t] ?? t}！`, rate: '-10%' })
 for (const t of DIGITS) jobs.push({ token: t, text: `${t}`, rate: '-10%' })
 for (const t of WORDS) jobs.push({ token: t, text: `${t}！`, rate: '+0%' })
 for (const t of MONSTER_NAMES) jobs.push({ token: t, text: `${t}！`, rate: '+0%' })

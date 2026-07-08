@@ -18,7 +18,7 @@ import { monsterName } from '../data/monsterNames'
 import { pickDistractors } from '../learning/distractors'
 import { pickNextLetter, pickTargetLetter } from '../learning/picker'
 import {
-  captureFailCount, isCaptured, loadProgress,
+  captureFailCount, getBuddy, isCaptured, loadProgress,
   recordAnswer, recordCaptureFail, recordCaptureSuccess, recordSeen, recordStageClear,
 } from '../store/progress'
 import type { DifficultyLevel, MathLevelSpec, MathProblem, Stage, StageBattle, StageResult, TargetKind } from '../types'
@@ -161,6 +161,9 @@ export class Ride25DScene extends Phaser.Scene {
   private lastMathQuestion = ''
   /** abc: 「A for Apple」の例単語カード（㉚。聞き取り補助＝音が不明瞭でも区別できる） */
   private questionIcon: Phaser.GameObjects.Container | null = null // ㊲ 出題中の補助アイコン（HUD内）
+  private buddyId: string | null = null // ㊸ あいぼう（相棒）のモンスターID
+  private buddy: Phaser.GameObjects.Image | null = null
+  private buddyBase = 1 // あいぼうの基準スケール（喜び演出の戻り先）
 
   // モンスターの抽選（グループ・浄化回数は data/monsters.ts のテーブルで決まる）
   private monsterKeys: { weak: string[]; strong: string[]; boss: string[] } = { weak: [], strong: [], boss: [] }
@@ -241,6 +244,12 @@ export class Ride25DScene extends Phaser.Scene {
     // なかまボール（ボス浄化後の捕獲演出用）
     for (const b of BALLS) {
       this.load.image(`ball-${b.id}`, `${import.meta.env.BASE_URL}assets/balls/${b.file}`)
+    }
+
+    // ㊸ あいぼう（相棒）の画像を読み込む（選んでいれば同行させる）
+    this.buddyId = getBuddy(loadProgress())
+    if (this.buddyId) {
+      this.load.image(`buddy-${this.buddyId}`, `${import.meta.env.BASE_URL}assets/monsters/${this.buddyId}.png`)
     }
   }
 
@@ -351,6 +360,7 @@ export class Ride25DScene extends Phaser.Scene {
     this.buildComboBadge()
     this.buildBattleCounter()
     this.buildHearts()
+    this.buildBuddy()
 
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       this.aim.x = p.x
@@ -1250,6 +1260,7 @@ export class Ride25DScene extends Phaser.Scene {
 
     this.bumpCombo()
     this.wrongTapStreak = 0
+    this.buddyCheer() // ㊸ あいぼうが喜ぶ
     this.purifyStep++
     this.advancePurify()
 
@@ -1827,6 +1838,44 @@ export class Ride25DScene extends Phaser.Scene {
       const heart = this.add.text(GAME_W - 130 + i * 38, 52, '💖', { fontSize: '27px' })
         .setOrigin(0.5).setDepth(8000)
       this.heartIcons.push(heart)
+    }
+  }
+
+  /**
+   * ㊸ あいぼう（相棒）。選んでいれば、手元の近く（左下）にふわふわ浮いて同行する。
+   * 新規画像は不要＝既存モンスター画像＋モーションで表現。正解すると喜んでジャンプ／応援する。
+   * TODO: optional happy-pose image per monster（喜び用の一枚を足すと演出がさらに良くなる）
+   */
+  private buildBuddy(): void {
+    if (!this.buddyId || !this.textures.exists(`buddy-${this.buddyId}`)) return
+    const tex = this.textures.get(`buddy-${this.buddyId}`).getSourceImage()
+    const scale = 90 / tex.height
+    const x = 96, y = GAME_H - 132
+    const ring = this.add.circle(0, 0, 50, 0xffffff, 0.14)
+    const img = this.add.image(0, 0, `buddy-${this.buddyId}`).setScale(scale)
+    const box = this.add.container(x, y, [ring, img]).setDepth(7000)
+    this.buddy = img
+    this.buddyBase = scale
+    // ふわふわ浮遊（箱ごと上下）＋本体をゆらゆら（生きている感じ・文字は最前面なので邪魔しない）
+    this.tweens.add({ targets: box, y: y - 12, duration: 1500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+    this.tweens.add({ targets: img, angle: 6, duration: 2000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+  }
+
+  /** ㊸ 正解時、あいぼうが喜ぶ（ぷるっと弾む＋星をポン。たまに応援の声） */
+  private buddyCheer(): void {
+    const b = this.buddy
+    if (!b) return
+    this.tweens.add({
+      targets: b, scaleX: this.buddyBase * 1.2, scaleY: this.buddyBase * 0.85,
+      duration: 130, yoyo: true, repeat: 1, ease: 'Sine.easeInOut',
+    })
+    const box = b.parentContainer
+    if (box) {
+      const star = this.add.image(box.x, box.y - 42, 'star').setDepth(7001).setTint(0xffe066).setScale(0.2)
+      this.tweens.add({
+        targets: star, y: box.y - 74, scale: 0.7, alpha: 0, duration: 520, ease: 'Cubic.easeOut',
+        onComplete: () => star.destroy(),
+      })
     }
   }
 

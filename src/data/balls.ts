@@ -16,13 +16,18 @@ export interface BallSpec {
   trailColor: number
   /** 虹演出つきの特別なボールか（登場時に豪華なファンファーレ） */
   rainbow?: boolean
+  /**
+   * ㊷ ログインボーナスの日替わり抽選に出るか（＝「青以上」だけ true）。
+   * 赤（成功率20%）は出さず、青40%/黒60%/紫100% のみをボーナスで抽選する。データで調整可。
+   */
+  bonusEligible?: boolean
 }
 
 export const BALLS: BallSpec[] = [
-  { id: 'red', name: 'あかボール', file: 'ball-red.png', successRate: 0.2, rouletteWeight: 40, trailColor: 0xff5a5a },
-  { id: 'blue', name: 'あおボール', file: 'ball-blue.png', successRate: 0.4, rouletteWeight: 30, trailColor: 0x4db2ff },
-  { id: 'black', name: 'ブラックボール', file: 'ball-black.png', successRate: 0.6, rouletteWeight: 20, trailColor: 0xffd94d },
-  { id: 'purple', name: 'むらさきボール', file: 'ball-purple.png', successRate: 1.0, rouletteWeight: 10, trailColor: 0xc07bff, rainbow: true },
+  { id: 'red', name: 'あかボール', file: 'ball-red.png', successRate: 0.2, rouletteWeight: 40, trailColor: 0xff5a5a, bonusEligible: false },
+  { id: 'blue', name: 'あおボール', file: 'ball-blue.png', successRate: 0.4, rouletteWeight: 30, trailColor: 0x4db2ff, bonusEligible: true },
+  { id: 'black', name: 'ブラックボール', file: 'ball-black.png', successRate: 0.6, rouletteWeight: 20, trailColor: 0xffd94d, bonusEligible: true },
+  { id: 'purple', name: 'むらさきボール', file: 'ball-purple.png', successRate: 1.0, rouletteWeight: 10, trailColor: 0xc07bff, rainbow: true, bonusEligible: true },
 ]
 
 /** 同じモンスターで何回失敗したら次のルーレットを紫（必ず成功）にするか */
@@ -38,4 +43,22 @@ export function rollBall(pity: boolean): BallSpec {
     if (r <= 0) return b
   }
   return BALLS[0]
+}
+
+/** ㊷ ログインボーナスの日替わり抽選に出るボール（青以上のみ） */
+export const BONUS_BALLS: BallSpec[] = BALLS.filter(b => b.bonusEligible)
+
+/**
+ * ㊷ ログインボーナス用の抽選。青以上（BONUS_BALLS）だけを重み付きで引く。
+ * pity（同じモンスターで2回失敗済み）のときは通常どおり紫（必ず成功）を返す。
+ */
+export function bonusRollBall(pity: boolean): BallSpec {
+  if (pity) return BALLS[BALLS.length - 1]
+  const total = BONUS_BALLS.reduce((s, b) => s + b.rouletteWeight, 0)
+  let r = Math.random() * total
+  for (const b of BONUS_BALLS) {
+    r -= b.rouletteWeight
+    if (r <= 0) return b
+  }
+  return BONUS_BALLS[0]
 }

@@ -3,7 +3,7 @@ import { MAX_DIFFICULTY } from '../types'
 import type { DifficultyLevel, LetterStats, PlayerProgress, Stage, TargetKind } from '../types'
 
 const STORAGE_KEY = 'moji-ranger-progress'
-const SCHEMA_VERSION = 5
+const SCHEMA_VERSION = 6
 
 function defaultStats(): LetterStats {
   return { seen: 0, correct: 0, wrong: 0, avgReactionTime: 0, masteryLevel: 0, assistedCorrect: 0 }
@@ -26,6 +26,8 @@ function defaultProgress(): PlayerProgress {
     captureFailCounts: {},
     totalStars: 0,
     playSessions: 0,
+    buddyMonsterId: null,
+    lastBonusDate: undefined,
   }
 }
 
@@ -38,6 +40,8 @@ function defaultProgress(): PlayerProgress {
  *            旧データで★のあるステージは「難易度1クリア済み」とみなす
  *   v3 → v4: capturedMonsters（なかま）と captureFailCounts（pity 救済）を追加
  *   v4 → v5: englishStats（英語ステージの学習統計）を追加
+ *   v5 → v6: buddyMonsterId（あいぼう・㊸）と lastBonusDate（ログインボーナス・㊷）を追加
+ *            ＝どちらも任意項目なので構造移行は不要（欠けていれば既定値のまま）
  */
 export function migrateProgress(parsed: Partial<PlayerProgress>): PlayerProgress {
   const base = defaultProgress()
@@ -67,6 +71,9 @@ export function migrateProgress(parsed: Partial<PlayerProgress>): PlayerProgress
   if ((parsed.schemaVersion ?? 1) < 5) {
     merged.englishStats = {}
   }
+  // v6 は任意項目の追加のみ。壊れた型だけ既定へ戻す（部分復元）
+  if (typeof merged.buddyMonsterId !== 'string') merged.buddyMonsterId = null
+  if (typeof merged.lastBonusDate !== 'string') merged.lastBonusDate = undefined
   return merged
 }
 
@@ -255,6 +262,43 @@ export function recordCaptureFail(monsterId: string): void {
 /** そのモンスターの累計失敗回数（pity 判定用） */
 export function captureFailCount(progress: PlayerProgress, monsterId: string): number {
   return progress.captureFailCounts[monsterId] ?? 0
+}
+
+// ---- あいぼう（相棒・㊸） ----
+
+/** あいぼうのモンスターID（未選択・または捕獲していなければ null） */
+export function getBuddy(progress: PlayerProgress): string | null {
+  const id = progress.buddyMonsterId ?? null
+  if (!id) return null
+  return progress.capturedMonsters.includes(id) ? id : null // 捕獲解除された等の保険
+}
+
+/** あいぼうを選ぶ（null で解除）。捕獲済みのモンスターのみ設定できる */
+export function setBuddy(monsterId: string | null): void {
+  const progress = loadProgress()
+  if (monsterId && !progress.capturedMonsters.includes(monsterId)) return
+  progress.buddyMonsterId = monsterId
+  saveProgress(progress)
+}
+
+// ---- ログインボーナス（1日1回・㊷） ----
+
+/** ローカル日付を YYYY-MM-DD で返す（端末のタイムゾーン基準） */
+export function localDateKey(d: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+/** 今日ぶんのログインボーナスがまだ受け取れるか（前回受取日が今日でなければ true） */
+export function canClaimBonus(progress: PlayerProgress = loadProgress()): boolean {
+  return progress.lastBonusDate !== localDateKey()
+}
+
+/** ログインボーナスを受け取った（＝挑戦した）ことを記録する。成功/失敗にかかわらず今日は1回 */
+export function markBonusClaimed(): void {
+  const progress = loadProgress()
+  progress.lastBonusDate = localDateKey()
+  saveProgress(progress)
 }
 
 /**

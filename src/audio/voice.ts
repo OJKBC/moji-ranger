@@ -15,6 +15,7 @@ import { sfx } from './sfx'
 import { VOICE_CLIPS } from './voiceManifest'
 import { EN_VOICE_CLIPS } from './voiceManifestEn'
 import { EN_ABC_CLIPS } from './voiceManifestAbc'
+import { readingFor } from '../data/reading'
 
 class VoicePlayer {
   readonly supported = typeof window !== 'undefined' && 'speechSynthesis' in window
@@ -120,7 +121,12 @@ class VoicePlayer {
       void this.playClips(graph.ctx, graph.out, files)
       return true
     }
-    // クリップに無いテキストは speechSynthesis へフォールバック
+    // クリップに無いテキストは speechSynthesis へフォールバック。
+    // ㊻ 単独文字は読みマップで誤読（助詞化・ローマ字読み等）を防ぎ、言語も切り替える。
+    if (tokens.length === 1) {
+      const r = readingFor(tokens[0])
+      if (r) return this.speakTts(r.text, { ...opts, lang: r.lang === 'en' ? 'en-US' : 'ja-JP' })
+    }
     return this.speakTts(text, opts)
   }
 

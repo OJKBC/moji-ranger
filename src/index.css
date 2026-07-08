@@ -668,3 +668,260 @@ body {
   padding: 8px 14px;
   line-height: 1.5;
 }
+
+/* ---- ㊺ カテゴリ選択（にほんご/えいご/さんすう） ---- */
+
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 18px;
+  overflow-y: auto;
+  min-height: 0;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px 2px 10px;
+}
+
+.category-card {
+  font-family: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 26px 12px 20px;
+  border: none;
+  border-radius: 30px;
+  background: linear-gradient(180deg, #fffdf5, #ffe9c2);
+  box-shadow: 0 6px 0 var(--cat-color, #d6a24d), 0 12px 24px rgba(0, 0, 0, 0.3);
+  border-bottom: 6px solid var(--cat-color, #d6a24d);
+  cursor: pointer;
+  transition: transform 0.08s ease;
+}
+
+.category-card:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 var(--cat-color, #d6a24d), 0 5px 10px rgba(0, 0, 0, 0.3);
+}
+
+.category-icon {
+  font-size: clamp(52px, 13vw, 84px);
+  font-weight: 900;
+  line-height: 1;
+  color: var(--cat-color, #3a3a70);
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.12);
+}
+
+.category-label {
+  font-size: clamp(20px, 5vw, 28px);
+  font-weight: bold;
+  color: #3a3a70;
+}
+
+.category-progress {
+  font-size: clamp(13px, 3vw, 16px);
+  color: #f5a623;
+  letter-spacing: 1px;
+}
+
+/* ---- ㊹ ステージ地図（道でつながる街めぐり） ---- */
+
+.map-cat-icon {
+  font-weight: 900;
+}
+
+.pathmap {
+  position: relative;
+  overflow-y: auto;
+  min-height: 0;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 0 12px;
+}
+
+.path-start,
+.path-goal {
+  font-size: clamp(16px, 4vw, 22px);
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.25);
+}
+.path-goal { margin-top: 6px; }
+
+.path-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+.path-step.left { align-self: flex-start; align-items: flex-start; padding-left: 8%; }
+.path-step.right { align-self: flex-end; align-items: flex-end; padding-right: 8%; }
+
+/* 道（ノードをつなぐ縦の道）。点灯するとカテゴリ色に光る */
+.path-link {
+  width: 10px;
+  height: 26px;
+  border-radius: 6px;
+  background: repeating-linear-gradient(
+    180deg, rgba(255, 255, 255, 0.25) 0 6px, transparent 6px 12px
+  );
+}
+.path-link.lit {
+  background: var(--cat-color, #ffd94d);
+  box-shadow: 0 0 10px var(--cat-color, #ffd94d);
+}
+
+.path-node {
+  font-family: inherit;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: min(64vw, 240px);
+  padding: 14px 12px 12px;
+  border: none;
+  border-radius: 26px;
+  background: linear-gradient(180deg, #fffdf5, #ffe9c2);
+  box-shadow: 0 5px 0 #d6a24d, 0 10px 20px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: transform 0.08s ease;
+}
+.path-node:active { transform: translateY(3px); box-shadow: 0 2px 0 #d6a24d, 0 5px 10px rgba(0, 0, 0, 0.3); }
+.path-node.locked { background: linear-gradient(180deg, #b9b3cc, #948da8); box-shadow: 0 5px 0 #6f6885, 0 10px 20px rgba(0, 0, 0, 0.3); opacity: 0.9; }
+.path-node.cleared {
+  background: linear-gradient(180deg, #fffef8, #fff2cf);
+  box-shadow: 0 5px 0 #f5a623, 0 0 18px rgba(255, 217, 77, 0.7), 0 10px 20px rgba(0, 0, 0, 0.3);
+}
+
+.path-node-badge {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  font-size: 16px;
+  font-weight: bold;
+  color: #b8860b;
+  background: #fff;
+  border: 2px solid #f5a623;
+  border-radius: 999px;
+  width: 30px;
+  height: 30px;
+  line-height: 27px;
+}
+.path-node-icon { font-size: clamp(34px, 8vw, 50px); font-weight: bold; color: #3a3a70; line-height: 1.1; }
+.path-node-name { font-size: clamp(14px, 3.4vw, 18px); font-weight: bold; color: #3a3a70; }
+.path-node.locked .path-node-name { color: #4a4560; }
+
+/* ---- ㊷ ログインボーナス ---- */
+
+.bonus-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 6, 30, 0.72);
+  backdrop-filter: blur(3px);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.bonus-box {
+  width: min(92vw, 460px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 20px 26px;
+  border-radius: 30px;
+  background: linear-gradient(180deg, #2a1a5c, #3a2470);
+  border: 3px solid #ffd94d;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+.bonus-banner {
+  font-size: clamp(22px, 6vw, 32px);
+  font-weight: 900;
+  color: #ffd94d;
+  text-shadow: 0 3px 0 #a85, 0 6px 14px rgba(0, 0, 0, 0.5);
+  animation: bonusPop 0.5s ease;
+}
+@keyframes bonusPop { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+.bonus-sub { color: #fff; font-size: clamp(14px, 3.6vw, 18px); line-height: 1.5; }
+
+.bonus-stage {
+  position: relative;
+  width: 100%;
+  height: 210px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bonus-monster {
+  max-height: 180px;
+  max-width: 70%;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.5));
+  animation: bonusFloat 2s ease-in-out infinite;
+}
+@keyframes bonusFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+
+.bonus-stage.phase-throwing .bonus-monster { animation: bonusShake 0.4s ease-in-out infinite; }
+@keyframes bonusShake { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+.bonus-stage.phase-success .bonus-monster { animation: bonusWin 0.6s ease; }
+@keyframes bonusWin { 0% { transform: scale(0.6); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
+
+.bonus-ball {
+  position: absolute;
+  bottom: 6px;
+  width: 74px;
+  height: 74px;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5));
+}
+.bonus-stage.phase-roulette .bonus-ball { animation: ballSpin 0.4s linear infinite; }
+@keyframes ballSpin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+.bonus-stage.phase-throwing .bonus-ball { animation: ballThrow 0.6s ease-out forwards; }
+@keyframes ballThrow { from { bottom: 6px; transform: scale(1); } to { bottom: 90px; transform: scale(0.7) rotate(240deg); } }
+
+.bonus-sparkle { position: absolute; top: 6px; font-size: 44px; animation: bonusPop 0.5s ease; }
+.bonus-reward { font-size: 56px; animation: bonusFloat 2s ease-in-out infinite; }
+.bonus-throw { background: linear-gradient(180deg, #ffe27a, #ff9d3c); }
+
+/* ---- ㊸ あいぼう（図鑑のUI） ---- */
+
+.buddy-status {
+  color: #fff;
+  font-size: clamp(13px, 3.2vw, 16px);
+  text-align: center;
+  background: rgba(122, 77, 255, 0.3);
+  border-radius: 12px;
+  padding: 7px 12px;
+  line-height: 1.5;
+}
+.buddy-status b { color: #ffd94d; }
+
+.zukan-card.is-buddy {
+  outline: 3px solid #ffd94d;
+  box-shadow: 0 0 14px rgba(255, 217, 77, 0.7);
+}
+.buddy-mark {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 20px;
+  z-index: 2;
+}
+
+.buddy-button.active {
+  background: linear-gradient(180deg, #ffd94d, #f5a623) !important;
+  color: #3a3a70 !important;
+}

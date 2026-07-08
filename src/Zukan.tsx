@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { CAPTURABLE_MONSTER_IDS, monsterImageUrl, monsterName } from './data/monsterNames'
-import { exportSave, importSave, loadProgress } from './store/progress'
+import { exportSave, getBuddy, importSave, loadProgress, setBuddy } from './store/progress'
 import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
 
@@ -30,6 +30,16 @@ export function Zukan({ onBack }: Props) {
   // 図鑑に載るのは「つよい（capturable）」だけ。総数・カウントもつよい基準
   const capturedCount = CAPTURABLE_MONSTER_IDS.filter(id => captured.has(id)).length
   const [selected, setSelected] = useState<string | null>(null)
+  // ㊸ あいぼう（相棒）。図鑑から選ぶ・変更する
+  const [buddy, setBuddyState] = useState<string | null>(() => getBuddy(progress))
+
+  const chooseBuddy = (id: string) => {
+    sfx.uiTap()
+    const next = buddy === id ? null : id // もう一度押すと解除
+    setBuddy(next)
+    setBuddyState(next)
+    if (next) voice.speak('あいぼうにするね')
+  }
 
   // 保護者メニュー（親ゲート: 大人向けの計算問題を解くと開く）
   const [parentStep, setParentStep] = useState<'closed' | 'gate' | 'menu' | 'confirm'>('closed')
@@ -124,11 +134,20 @@ export function Zukan({ onBack }: Props) {
           {capturedCount} / {CAPTURABLE_MONSTER_IDS.length}
         </div>
       </div>
+      {/* ㊸ あいぼうの案内（なかまがいなければ集めるよう促す） */}
+      <p className="buddy-status">
+        {capturedCount === 0
+          ? '🤝 まずは なかまを あつめよう！（なかまを タップして あいぼうに できるよ）'
+          : buddy
+            ? <>🤝 いまの あいぼう: <b>{monsterName(buddy)}</b></>
+            : '🤝 なかまを タップして「あいぼう」に できるよ'}
+      </p>
       <div className="map-grid zukan-grid">
         {CAPTURABLE_MONSTER_IDS.map(id => {
           const got = captured.has(id)
           return got ? (
-            <button key={id} className="zukan-card" onClick={() => open(id)}>
+            <button key={id} className={`zukan-card ${id === buddy ? 'is-buddy' : ''}`} onClick={() => open(id)}>
+              {id === buddy && <span className="buddy-mark" aria-label="あいぼう">🤝</span>}
               <img className="zukan-img" src={monsterImageUrl(id)} alt={monsterName(id)} />
               <span className="zukan-name">{monsterName(id)}</span>
             </button>
@@ -156,6 +175,13 @@ export function Zukan({ onBack }: Props) {
               aria-label="なまえをきく"
             >
               🔊
+            </button>
+            {/* ㊸ あいぼうに選ぶ（もう一度で解除） */}
+            <button
+              className={`sub-button buddy-button ${selected === buddy ? 'active' : ''}`}
+              onClick={e => { e.stopPropagation(); chooseBuddy(selected) }}
+            >
+              {selected === buddy ? '🤝 あいぼう ✓（かいじょ）' : '🤝 あいぼうに する'}
             </button>
           </div>
         </div>

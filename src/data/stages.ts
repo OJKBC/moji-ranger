@@ -1,4 +1,4 @@
-import type { Hero, Stage } from '../types'
+import type { Hero, Stage, StageCategory } from '../types'
 
 /**
  * ステージデータ集約ファイル。
@@ -275,6 +275,29 @@ export const STAGES: Stage[] = [
     difficulty: 1,
   },
 ]
+
+/** ㊺ ステージの大枠カテゴリ（明示指定が無ければ type から推定） */
+export function categoryOf(stage: Stage): StageCategory {
+  if (stage.category) return stage.category
+  if (stage.type === 'english') return 'en'
+  if (stage.type === 'math' || stage.type === 'number') return 'math'
+  return 'jp' // hiragana / katakana（もじもじ含む）
+}
+
+/** カテゴリの並び順 */
+export const CATEGORY_ORDER: StageCategory[] = ['jp', 'en', 'math']
+
+/** ㊺ カテゴリの見た目・読み上げ（読めない子にも絵＋色＋音で伝わるように） */
+export const CATEGORY_META: Record<StageCategory, { label: string; icon: string; color: string; voice: string }> = {
+  jp: { label: 'にほんご', icon: 'あ', color: '#ff7aa2', voice: 'にほんご' },
+  en: { label: 'えいご', icon: 'A', color: '#4db2ff', voice: 'えいご' },
+  math: { label: 'さんすう', icon: '123', color: '#4ccb5a', voice: 'さんすう' },
+}
+
+/** そのカテゴリに属する（非表示でない）ステージ一覧 */
+export function stagesInCategory(category: StageCategory): Stage[] {
+  return STAGES.filter(s => !s.hidden && categoryOf(s) === category)
+}
 
 /** 指定ステージの次のステージ（最後なら null） */
 export function nextStageOf(stageId: string): Stage | null {

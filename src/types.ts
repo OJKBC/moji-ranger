@@ -119,11 +119,16 @@ export interface MathLevelSpec {
   maxAnswer: number
 }
 
+/** ㊺ 大枠カテゴリ（起動後の選択画面／地図のグループ分け） */
+export type StageCategory = 'jp' | 'en' | 'math'
+
 export interface Stage {
   id: string
   title: string
   type: StageType
   mode: StageMode
+  /** ㊺ 大枠カテゴリ（にほんご/えいご/さんすう）。省略時は type から推定 */
+  category?: StageCategory
   /**
    * 解放条件（省略時は常時解放）。
    * 「stageId の難易度 minLevel をクリア済み」で解放される。
@@ -212,6 +217,10 @@ export interface PlayerProgress {
   playSessions: number
   /** 最終保存日時（多重保存の新旧判定用。schemaVersion 4 以降で付与） */
   savedAt?: number
+  /** あいぼう（連れ歩く相棒）のモンスターID。未選択は null（schemaVersion 6 で追加・㊸） */
+  buddyMonsterId?: string | null
+  /** ログインボーナスを最後に受け取った日（YYYY-MM-DD・ローカル日付。schemaVersion 6 で追加・㊷） */
+  lastBonusDate?: string
 }
 
 /** ステージクリア時に Phaser → React へ渡す結果 */
