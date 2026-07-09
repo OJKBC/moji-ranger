@@ -1015,6 +1015,25 @@ body {
   .path-node-icon { font-size: clamp(28px, 5.5vw, 42px); }
   .path-start,
   .path-goal { padding: 5px 18px; }
+
+  /* カテゴリ選択（なにであそぶ？）は横向きでは必ず「1行に3枚」に固定し、
+     縦スクロールが絶対に出ないようにする（画面の縦が短くても収める）。
+     ・grid を横3列に固定（minmax(0,1fr) で狭い横幅でも横あふれしない）
+     ・内部スクロールを止める（3枚だけなのでスクロール不要）
+     ・カードと絵を小さめにして1行の高さを抑える
+     ・パネルを見える範囲の中央に置く */
+  .category-screen { justify-content: center; }
+  .category-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: visible;
+    gap: 12px;
+    padding: 4px;
+    align-content: center;
+  }
+  .category-card { padding: 14px 8px 12px; gap: 7px; border-radius: 24px; }
+  .category-icon-wrap { width: clamp(52px, 9vw, 88px); height: clamp(52px, 9vw, 88px); }
+  .category-icon { font-size: clamp(30px, 6vw, 54px); }
+  .category-label { font-size: clamp(16px, 3vw, 26px); }
 }
 
 /* ---- ㊷ ログインボーナス ---- */
