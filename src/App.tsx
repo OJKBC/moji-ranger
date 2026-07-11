@@ -273,6 +273,7 @@ export default function App() {
             {STAGES.find(s => s.id === result.stageId)?.title ?? ''} レベル{result.difficulty} クリア！
             {result.maxCombo >= 3 && <> さいだい れんぞく ×{result.maxCombo}！</>}
           </p>
+          {result.reviewItem && <ReviewCard item={result.reviewItem} />}
           {next && (
             <button className="big-button" onClick={() => { sfx.uiTap(); playStage(next.stage, next.level) }}>
               {next.stage.id === result.stageId
@@ -293,6 +294,32 @@ export default function App() {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * ㊾b クリア後の「にがて振り返り」。そのプレイで一番間違えた項目を大きく1つ出して読み上げる。
+ * 叱らず前向きに（「これは『ぬ』だよ」）。間違いゼロなら親側で描画しない（ここには来ない）。
+ */
+function ReviewCard({ item }: { item: NonNullable<StageResult['reviewItem']> }) {
+  const say = useCallback(() => {
+    if (item.en) voice.speakEn(item.read)
+    else if (item.read) voice.speak(item.read)
+  }, [item])
+  useEffect(() => {
+    // 称賛の直後に、そっと1つだけ復習する
+    const t = setTimeout(say, 1000)
+    return () => clearTimeout(t)
+  }, [say])
+  return (
+    <div className="review-card">
+      <span className="review-label">💡 きょうの おさらい</span>
+      <div className="review-item">
+        {item.icon && <span className="review-icon">{item.icon}</span>}
+        <span className="review-text">{item.text}</span>
+      </div>
+      <button className="review-replay" onClick={() => { sfx.uiTap(); say() }}>🔊 もういちど</button>
     </div>
   )
 }

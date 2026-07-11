@@ -1,5 +1,5 @@
 import { LEARNING } from '../data/learningConfig'
-import { loadProgress } from '../store/progress'
+import { loadProgress, weaknessScore } from '../store/progress'
 import type { TargetKind } from '../types'
 
 /**
@@ -64,10 +64,13 @@ export function pickTargetLetter(pool: string[], poolStart: number, kind: Target
     score -= Math.min(seen - minSeen, 15) * LEARNING.seenPenaltyPerCount
     // 直近に出た文字は避ける
     if (recentSet.has(label)) score -= LEARNING.recentPenalty
-    // 復習の回だけ、苦手（誤答・低熟達）を優先する
-    if (isReviewTurn) {
-      score += (s?.wrong ?? 0) * 2 + (5 - (s?.masteryLevel ?? 0)) * 0.5
-    }
+    // 間違えた項目は難易度をまたいで少し出やすくする（常時の弱いブースト）。
+    // weaknessScore は正解の積み上げで減衰し、習熟したら 0（通常頻度）に戻る。
+    const weak = weaknessScore(s)
+    score += weak * 0.3
+    // 復習の回はさらに強く苦手を優先する（比率上限は maxReviewRatio で守られる）
+    if (isReviewTurn) score += weak * 1.2
+
     if (score > bestScore) {
       bestScore = score
       best = label

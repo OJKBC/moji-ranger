@@ -3,7 +3,7 @@ import { MAX_DIFFICULTY } from '../types'
 import type { DifficultyLevel, LetterStats, PlayerProgress, Stage, TargetKind } from '../types'
 
 const STORAGE_KEY = 'moji-ranger-progress'
-const SCHEMA_VERSION = 6
+const SCHEMA_VERSION = 7
 
 function defaultStats(): LetterStats {
   return { seen: 0, correct: 0, wrong: 0, avgReactionTime: 0, masteryLevel: 0, assistedCorrect: 0 }
@@ -74,6 +74,8 @@ export function migrateProgress(parsed: Partial<PlayerProgress>): PlayerProgress
   // v6 は任意項目の追加のみ。壊れた型だけ既定へ戻す（部分復元）
   if (typeof merged.buddyMonsterId !== 'string') merged.buddyMonsterId = null
   if (typeof merged.lastBonusDate !== 'string') merged.lastBonusDate = undefined
+  // v7: 難易度を7段階に拡張（stageLevels は上限が広がるだけでデータ移行は不要）。
+  //     たしざんは既存 'math-add-1' のまま引き継ぎ、ひきざんは新ID 'math-sub-1' で0から。
   return merged
 }
 
@@ -199,6 +201,45 @@ export function recordAnswer(
   stats.masteryLevel = Math.min(5, Math.max(0, Math.round((stats.correct - stats.wrong) / 3)))
   map[label] = stats
   saveProgress(progress)
+}
+
+/**
+ * その項目の「にがて度」。間違いが多く・まだ習熟していないほど高い。
+ * 正解が積み上がると段階的に下がり、習熟（masteryLevel 上昇）で 0（＝通常頻度）に戻る。
+ * ＝間違えた項目は難易度をまたいで出やすくし、できるようになったら自然に頻度を戻す（復習の減衰）。
+ */
+export function weaknessScore(s: LetterStats | undefined): number {
+  if (!s || !(s.wrong > 0)) return 0
+  return Math.max(0, s.wrong * 2 - (s.correct ?? 0) * 0.6 + (5 - (s.masteryLevel ?? 0)))
+}
+
+export interface WeakItem {
+  label: string
+  kind: TargetKind | 'math'
+  score: number
+}
+
+/**
+ * にがて項目（weaknessScore ≥ minScore）を全種類（かな・すうじ・さんすう・えいご）から
+ * 集め、にがて度の強い順に返す。クリア後の「にがて振り返り」やふくしゅうステージで使う。
+ * 既存の *Stats を参照するだけ（新しい統計は作らない）。
+ */
+export function collectWeakItems(minScore = 2): WeakItem[] {
+  const p = loadProgress()
+  const groups: Array<[TargetKind | 'math', Record<string, LetterStats>]> = [
+    ['hiragana', p.letterStats],
+    ['number', p.numberStats],
+    ['math', p.mathStats],
+    ['english', p.englishStats],
+  ]
+  const out: WeakItem[] = []
+  for (const [kind, map] of groups) {
+    for (const [label, s] of Object.entries(map)) {
+      const score = weaknessScore(s)
+      if (score >= minScore) out.push({ label, kind, score })
+    }
+  }
+  return out.sort((a, b) => b.score - a.score)
 }
 
 /** ラウンド開始時に「出題された」ことを記録する */

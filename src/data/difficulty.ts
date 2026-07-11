@@ -39,6 +39,10 @@ export const DIFFICULTY: Record<DifficultyLevel, DifficultyTuning> = {
   3: { choiceBonus: 1, poolBonus: 34, speedMul: 1.15, useConfusables: true, maxConfusables: 2, fastPrompt: true, mathChoices: 3 },
   4: { choiceBonus: 2, poolBonus: 59, speedMul: 1.22, useConfusables: true, maxConfusables: 3, fastPrompt: true, mathChoices: 4 },
   5: { choiceBonus: 3, poolBonus: 70, speedMul: 1.30, useConfusables: true, maxConfusables: 3, fastPrompt: true, mathChoices: 4 },
+  // L6/L7 は「かな全域（プールは L5 で開放済み）を、さらに紛らわしく・選択肢多め・少し速く」。
+  // choiceBonus は MAX_CHOICES(6) で頭打ち。心折れ防止に speed は緩やかに上げる。
+  6: { choiceBonus: 3, poolBonus: 70, speedMul: 1.36, useConfusables: true, maxConfusables: 4, fastPrompt: true, mathChoices: 4 },
+  7: { choiceBonus: 4, poolBonus: 70, speedMul: 1.42, useConfusables: true, maxConfusables: 4, fastPrompt: true, mathChoices: 4 },
 }
 
 export function tuningFor(level: DifficultyLevel): DifficultyTuning {

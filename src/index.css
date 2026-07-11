@@ -1036,6 +1036,43 @@ body {
   .category-label { font-size: clamp(16px, 3vw, 26px); }
 }
 
+/* ---- ㊾b クリア後の「にがて振り返り」カード ---- */
+.review-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 22px;
+  padding: 12px 24px 14px;
+  margin: 2px 0;
+  animation: riseIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.review-label { font-size: clamp(13px, 3vw, 16px); color: #ffe08a; font-weight: 800; letter-spacing: 0.5px; }
+.review-item { display: flex; align-items: center; gap: 12px; }
+.review-icon { font-size: clamp(40px, 10vw, 60px); line-height: 1; }
+.review-text {
+  font-size: clamp(40px, 11vw, 68px);
+  font-weight: 900;
+  color: #fff;
+  line-height: 1.1;
+  text-shadow: 0 3px 0 #7a4dff, 0 6px 14px rgba(0, 0, 0, 0.45);
+}
+.review-replay {
+  font-family: inherit;
+  font-size: clamp(14px, 3.4vw, 18px);
+  font-weight: 800;
+  color: #3a3a70;
+  background: #ffd94d;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 20px;
+  box-shadow: 0 4px 0 #d6a24d;
+  cursor: pointer;
+}
+.review-replay:active { transform: translateY(3px); box-shadow: 0 1px 0 #d6a24d; }
+
 /* ---- ㊷ ログインボーナス ---- */
 
 .bonus-overlay {

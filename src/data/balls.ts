@@ -24,9 +24,11 @@ export interface BallSpec {
 }
 
 export const BALLS: BallSpec[] = [
-  { id: 'red', name: 'あかボール', file: 'ball-red.png', successRate: 0.2, rouletteWeight: 40, trailColor: 0xff5a5a, bonusEligible: false },
-  { id: 'blue', name: 'あおボール', file: 'ball-blue.png', successRate: 0.4, rouletteWeight: 30, trailColor: 0x4db2ff, bonusEligible: true },
-  { id: 'black', name: 'ブラックボール', file: 'ball-black.png', successRate: 0.6, rouletteWeight: 20, trailColor: 0xffd94d, bonusEligible: true },
+  // 出現率（rouletteWeight）はデータで調整可能。赤が出やすすぎたので少し下げ、青・黒を上げた
+  // （赤34/青33/黒23/紫10）。紫（必ず成功）は据え置き。
+  { id: 'red', name: 'あかボール', file: 'ball-red.png', successRate: 0.2, rouletteWeight: 34, trailColor: 0xff5a5a, bonusEligible: false },
+  { id: 'blue', name: 'あおボール', file: 'ball-blue.png', successRate: 0.4, rouletteWeight: 33, trailColor: 0x4db2ff, bonusEligible: true },
+  { id: 'black', name: 'ブラックボール', file: 'ball-black.png', successRate: 0.6, rouletteWeight: 23, trailColor: 0xffd94d, bonusEligible: true },
   { id: 'purple', name: 'むらさきボール', file: 'ball-purple.png', successRate: 1.0, rouletteWeight: 10, trailColor: 0xc07bff, rainbow: true, bonusEligible: true },
 ]
 

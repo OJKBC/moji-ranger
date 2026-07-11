@@ -38,6 +38,7 @@ const DIGIT_READING: Record<string, string> = {
   '6': 'ろく', '7': 'なな', '8': 'はち', '9': 'きゅう', '10': 'じゅう',
   '11': 'じゅう いち', '12': 'じゅう に', '13': 'じゅう さん', '14': 'じゅう よん',
   '15': 'じゅう ご', '16': 'じゅう ろく', '17': 'じゅう なな', '18': 'じゅう はち',
+  '19': 'じゅう きゅう', '20': 'に じゅう',
 }
 const SHOT_COOLDOWN_MS = 110
 /** 強めのオートエイム（4〜6歳: 学習タスクは「正しい文字を選ぶ」こと） */
@@ -196,6 +197,8 @@ export class Ride25DScene extends Phaser.Scene {
   private combo = 0
   private maxCombo = 0
   private wrongTotal = 0
+  // ㊾b このプレイで間違えた項目（クリア後の「にがて振り返り」に使う）
+  private runWrong: Array<{ label: string; kind: TargetKind | 'math'; enWord?: string; answer?: string }> = []
   private sessionCorrect = 0
   private wrongThisStep = 0
   private wrongTapStreak = 0
@@ -1204,10 +1207,13 @@ export class Ride25DScene extends Phaser.Scene {
     const assisted = correct && this.assistedThisStep
     if (this.stageData.type === 'english') {
       recordAnswer(this.currentEnWord, 'english', correct, reactionMs, assisted)
+      if (!correct) this.runWrong.push({ label: this.currentEnWord, kind: 'english', enWord: this.currentEnWord })
     } else if (this.stageData.mode === 'math' && this.currentProblem) {
       recordAnswer(this.currentProblem.question, 'math', correct, reactionMs, assisted)
+      if (!correct) this.runWrong.push({ label: this.currentProblem.question, kind: 'math', answer: this.currentProblem.answer })
     } else {
       recordAnswer(this.currentTarget, this.currentKind, correct, reactionMs, assisted)
+      if (!correct) this.runWrong.push({ label: this.currentTarget, kind: this.currentKind })
     }
   }
 
@@ -2320,9 +2326,36 @@ export class Ride25DScene extends Phaser.Scene {
       maxCombo: this.maxCombo,
       stars,
       playTimeMs: Math.round(this.time.now - this.stageStartAt),
+      reviewItem: this.buildReviewItem(),
     }
     this.time.delayedCall(1700, () => EventBus.emit('stage-clear', result))
     this.updateDebugHook()
+  }
+
+  /**
+   * ㊾b このプレイで一番よく間違えた項目を1つ選び、リザルトの「にがて振り返り」用に整える。
+   * 間違いゼロなら undefined（スキップ）。叱らず前向きに1つだけ復習する。
+   */
+  private buildReviewItem(): StageResult['reviewItem'] {
+    if (!this.runWrong.length) return undefined
+    // 同じ項目の間違い回数を数え、最も多いものを選ぶ（同点は最後に出たもの）
+    type WrongItem = { label: string; kind: TargetKind | 'math'; enWord?: string; answer?: string }
+    const counts = new Map<string, { item: WrongItem; n: number }>()
+    for (const w of this.runWrong) {
+      const key = `${w.kind}:${w.label}`
+      const c = counts.get(key) ?? { item: w, n: 0 }
+      c.n += 1; c.item = w
+      counts.set(key, c)
+    }
+    const worst = [...counts.values()].sort((a, b) => b.n - a.n)[0].item
+    if (worst.kind === 'english' && worst.enWord) {
+      return { text: worst.enWord.toUpperCase(), read: worst.enWord, en: true, icon: iconForEnglishWord(worst.enWord) ?? '🔤' }
+    }
+    if (worst.kind === 'math') {
+      return { text: worst.answer ? `${worst.label}=${worst.answer}` : worst.label, read: worst.answer ? `これは、${DIGIT_READING[worst.answer] ?? worst.answer}、だよ` : '', en: false }
+    }
+    // かな・すうじ: 大きく表示して「これは、◯、だよ」と読む
+    return { text: worst.label, read: `これは、${worst.label}、だよ`, en: false }
   }
 
   private updateDebugHook(): void {

@@ -29,6 +29,8 @@ export const MONSTER_TABLE: MonsterSpawnTable = {
     3: { weak: 1, strong: 0 },
     4: { weak: 1, strong: 0 },
     5: { weak: 1, strong: 0 },
+    6: { weak: 1, strong: 0 },
+    7: { weak: 1, strong: 0 },
   },
   purifySteps: { weak: [1, 2], strong: [2, 3] },
   bossWeights: { uncaptured: 1.0, captured: 0.2 },

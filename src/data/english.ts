@@ -183,6 +183,34 @@ export const SPELL_WORDS: Record<DifficultyLevel, SpellSpec[]> = {
     { word: 'cricket', wrong: ['criket', 'crickt', 'crikcet', 'crickett', 'crikket'] },
     { word: 'ketchup', wrong: ['kechup', 'ketchp', 'ketchap', 'kettchup', 'ketchupp'] },
   ],
+  6: [
+    { word: 'elephant', wrong: ['elefant', 'eliphant', 'elephent', 'elphant', 'elephunt'] },
+    { word: 'dinosaur', wrong: ['dinosor', 'dinasaur', 'dinosour', 'dynosaur', 'dinosaru'] },
+    { word: 'umbrella', wrong: ['umberella', 'umbrela', 'umbrellla', 'unbrella', 'umbrellia'] },
+    { word: 'airplane', wrong: ['airplan', 'airplaine', 'airplayn', 'areplane', 'airplene'] },
+    { word: 'kangaroo', wrong: ['kangeroo', 'kangaru', 'kanaroo', 'kangoroo', 'kangarooo'] },
+    { word: 'triangle', wrong: ['triangel', 'triangl', 'triangfle', 'treangle', 'triyangle'] },
+    { word: 'football', wrong: ['footbal', 'futball', 'footballl', 'fottball', 'foootball'] },
+    { word: 'starfish', wrong: ['starfsh', 'starfich', 'sterfish', 'starfishh', 'starfash'] },
+    { word: 'hospital', wrong: ['hospitl', 'hospitel', 'hopsital', 'hospitial', 'hosbital'] },
+    { word: 'scissors', wrong: ['sissors', 'scisors', 'scissers', 'scissorss', 'scizzors'] },
+    { word: 'sandwich', wrong: ['sandwitch', 'sandwch', 'sanwich', 'samdwich', 'sandwhich'] },
+    { word: 'squirrel', wrong: ['squirel', 'squirrl', 'squirrell', 'skwirrel', 'squrrel'] },
+  ],
+  7: [
+    { word: 'butterfly', wrong: ['buterfly', 'butterflie', 'butterfy', 'buttterfly', 'buterflie'] },
+    { word: 'crocodile', wrong: ['crocodil', 'crocadile', 'crocodyle', 'crokodile', 'crocodilee'] },
+    { word: 'astronaut', wrong: ['astronot', 'astronut', 'astronautt', 'asteronaut', 'astranaut'] },
+    { word: 'chocolate', wrong: ['choclate', 'chocolat', 'chocolete', 'choccolate', 'chocalate'] },
+    { word: 'ambulance', wrong: ['ambulence', 'ambulanse', 'ambulanc', 'ambewlance', 'ambulancee'] },
+    { word: 'pineapple', wrong: ['pineaple', 'pinapple', 'pineappel', 'pinneapple', 'pineaplle'] },
+    { word: 'kangaroos', wrong: ['kangaroo', 'kangaros', 'kangeroos', 'kanaroos', 'kangarooss'] },
+    { word: 'dandelion', wrong: ['dandilion', 'dandelien', 'dandeloin', 'dandalion', 'dandellion'] },
+    { word: 'orangutan', wrong: ['orangutang', 'orangatan', 'orangutn', 'orangatang', 'oranguton'] },
+    { word: 'raspberry', wrong: ['rasberry', 'raspbery', 'raspberrie', 'rasspberry', 'raspberyy'] },
+    { word: 'centipede', wrong: ['sentipede', 'centipeed', 'centepede', 'centipde', 'centipedee'] },
+    { word: 'crocodiles', wrong: ['crocodile', 'crocodils', 'crocadiles', 'crokodiles', 'crocodyles'] },
+  ],
 }
 
 // ============================================================ ③ meaning（英語→意味）
@@ -292,6 +320,32 @@ const MEAN_L5_EXTRA: MeaningSpec[] = [
   { word: 'purple', meaning: 'むらさき', genre: 'color' },
   { word: 'soup', meaning: 'すーぷ', genre: 'food' },
 ]
+// 難易度6で増える語
+const MEAN_L6_EXTRA: MeaningSpec[] = [
+  { word: 'elephant', meaning: 'ぞう', genre: 'animal' },
+  { word: 'giraffe', meaning: 'きりん', genre: 'animal' },
+  { word: 'fox', meaning: 'きつね', genre: 'animal' },
+  { word: 'strawberry', meaning: 'いちご', genre: 'fruit' },
+  { word: 'watermelon', meaning: 'すいか', genre: 'fruit' },
+  { word: 'train', meaning: 'でんしゃ', genre: 'vehicle' },
+  { word: 'rocket', meaning: 'ろけっと', genre: 'vehicle' },
+  { word: 'star', meaning: 'ほし', genre: 'nature' },
+  { word: 'flower', meaning: 'はな', genre: 'nature' },
+  { word: 'orange', meaning: 'おれんじいろ', genre: 'color' },
+]
+// 難易度7でさらに増える語
+const MEAN_L7_EXTRA: MeaningSpec[] = [
+  { word: 'tiger', meaning: 'とら', genre: 'animal' },
+  { word: 'dolphin', meaning: 'いるか', genre: 'animal' },
+  { word: 'whale', meaning: 'くじら', genre: 'animal' },
+  { word: 'butterfly', meaning: 'ちょうちょ', genre: 'animal' },
+  { word: 'peach', meaning: 'もも', genre: 'fruit' },
+  { word: 'grapes', meaning: 'ぶどう', genre: 'fruit' },
+  { word: 'ship', meaning: 'ふね', genre: 'vehicle' },
+  { word: 'wind', meaning: 'かぜ', genre: 'nature' },
+  { word: 'cloud', meaning: 'くも', genre: 'nature' },
+  { word: 'gray', meaning: 'はいいろ', genre: 'color' },
+]
 
 export const MEANING_WORDS: Record<DifficultyLevel, MeaningSpec[]> = {
   1: MEAN_L1,
@@ -299,6 +353,8 @@ export const MEANING_WORDS: Record<DifficultyLevel, MeaningSpec[]> = {
   3: MEAN_L3,
   4: [...MEAN_L3, ...MEAN_L4_EXTRA],
   5: [...MEAN_L3, ...MEAN_L4_EXTRA, ...MEAN_L5_EXTRA],
+  6: [...MEAN_L3, ...MEAN_L4_EXTRA, ...MEAN_L5_EXTRA, ...MEAN_L6_EXTRA],
+  7: [...MEAN_L3, ...MEAN_L4_EXTRA, ...MEAN_L5_EXTRA, ...MEAN_L6_EXTRA, ...MEAN_L7_EXTRA],
 }
 
 /** その難易度の meaning 問題から、同じ genre の別の意味を誤答候補として集める */

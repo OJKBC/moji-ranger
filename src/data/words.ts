@@ -144,8 +144,10 @@ export const WORDS: WordSpec[] = [
   { word: 'たいようけい', celebration: '🌞' },
 ]
 
-/** 難易度に応じた文字数の単語だけを返す */
+/** 難易度に応じた文字数の単語だけを返す。
+ *  1=2文字 … 5=6文字。6文字で頭打ち（4〜6歳に無理のない範囲＝拗促音なしの7文字以上は
+ *  身近な語がほとんど無いため）。難易度6・7は6文字プールのまま、選択肢数・テンポで難しくする。 */
 export function wordsForLevel(level: DifficultyLevel): WordSpec[] {
-  const length = level + 1 // 難易度1=2文字, 2=3文字, 3=4文字
+  const length = Math.min(6, level + 1)
   return WORDS.filter(w => [...w.word].length === length)
 }

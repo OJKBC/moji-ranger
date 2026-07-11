@@ -106,10 +106,10 @@ export interface MathProblem {
   choices: string[]
 }
 
-/** ステージ内の難易度段階。1→2→3→4→5 の順に解放される */
-export type DifficultyLevel = 1 | 2 | 3 | 4 | 5
+/** ステージ内の難易度段階。1→…→7 の順に解放される */
+export type DifficultyLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7
 /** 最高難易度（今後さらに増やすときはここと data/difficulty.ts を広げる） */
-export const MAX_DIFFICULTY = 5
+export const MAX_DIFFICULTY = 7
 
 /** さんすうバトルの難易度別出題パラメータ（毎ラウンドのランダム生成に使う） */
 export interface MathLevelSpec {
@@ -233,4 +233,17 @@ export interface StageResult {
   maxCombo: number
   stars: 1 | 2 | 3
   playTimeMs: number
+  /**
+   * ㊾b クリア後の「にがて振り返り」用。そのプレイで一番よく間違えた項目を1つ、
+   * 大きく表示して読み上げる（間違いゼロなら undefined＝スキップ）。
+   */
+  reviewItem?: {
+    /** 大きく表示するテキスト（文字・数字・式・英単語） */
+    text: string
+    /** 読み上げるテキスト（空なら読み上げない）。en=true のときは英単語として読む */
+    read: string
+    en: boolean
+    /** 補助アイコン（英単語などの絵） */
+    icon?: string
+  }
 }

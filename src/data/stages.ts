@@ -141,8 +141,8 @@ export const STAGES: Stage[] = [
     difficulty: 2,
   },
   {
-    id: 'math-add-1', // 内部キーは変更しない（保存済み進捗を壊さないため）
-    title: 'さんすうバトル',
+    id: 'math-add-1', // 内部キーは変更しない（＝「たしざん」に改名しても既存クリア進捗を引き継ぐ）
+    title: 'たしざんバトル',
     type: 'math',
     mode: 'math',
     renderer: '2.5d', // 画面仕様はひらがなこうえんと共通（差分は出題内容だけ）
@@ -159,24 +159,65 @@ export const STAGES: Stage[] = [
       letterPool: [], // math では未使用（mathLevels から生成）
       poolStart: 0,
     },
-    // 難易度別のランダム出題パラメータ（毎ラウンド生成・数の組み合わせを広くとる）。
-    // 同じ式が連続しないよう、生成側（Ride25DScene）で直前の式を避ける
+    // たしざん専用（＋のみ）。小さい数から始めて上の難易度ほど数の範囲を広げる。
+    // 答えが10を超えると自然にくり上がりが入る（maxAnswer で調整）。
     mathLevels: {
       1: { ops: ['+'], maxAnswer: 6 },
-      2: { ops: ['+'], maxAnswer: 10 },
-      3: { ops: ['+', '-'], maxAnswer: 10 },
-      4: { ops: ['+', '-'], maxAnswer: 14 }, // くり上がり・くり下がりが入る範囲
-      5: { ops: ['+', '-'], maxAnswer: 18 }, // 大きめの数（2桁がらみ）
+      2: { ops: ['+'], maxAnswer: 9 },
+      3: { ops: ['+'], maxAnswer: 12 }, // ここから10超え＝くり上がり
+      4: { ops: ['+'], maxAnswer: 14 },
+      5: { ops: ['+'], maxAnswer: 16 },
+      6: { ops: ['+'], maxAnswer: 18 },
+      7: { ops: ['+'], maxAnswer: 20 },
     },
     correctKind: 'number',
     distractors: [],
     problems: [
       { question: '1+1', voicePrompt: 'いち たす いち、いくつ？', answer: '2', choices: ['1', '2', '3'] },
       { question: '2+1', voicePrompt: 'に たす いち、いくつ？', answer: '3', choices: ['2', '3', '4'] },
-      { question: '1+2', voicePrompt: 'いち たす に、いくつ？', answer: '3', choices: ['3', '4', '1'] },
-      { question: '2+2', voicePrompt: 'に たす に、いくつ？', answer: '4', choices: ['2', '3', '4'] },
-      { question: '3+1', voicePrompt: 'さん たす いち、いくつ？', answer: '4', choices: ['4', '5', '3'] },
       { question: '3+2', voicePrompt: 'さん たす に、いくつ？', answer: '5', choices: ['4', '5', '2'] },
+    ],
+    rounds: 6,
+    targetsPerRound: 3,
+    reward: 1,
+    difficulty: 3,
+  },
+  {
+    id: 'math-sub-1', // 新規ステージ（ひきざん）。新IDなのでクリア進捗は0から。
+    title: 'ひきざんバトル',
+    type: 'math',
+    mode: 'math',
+    renderer: '2.5d',
+    recommendedAgeMin: 5,
+    recommendedAgeMax: 6,
+    missionText: 'こたえの ゲートを ビームで えらぼう！',
+    voicePrompts: [],
+    battle: {
+      enemyCount: 3,
+      purifyStepsPerEnemy: 1,
+      bossPurifySteps: 3,
+      choiceCount: 3,
+      rideDistance: 50,
+      letterPool: [],
+      poolStart: 0,
+    },
+    // ひきざん専用（−のみ）。答えは必ず1以上（生成側で b<a を保証）。
+    // 上の難易度ほど数の範囲を広げ、10超えの数からのひき算＝くり下がりが入る。
+    mathLevels: {
+      1: { ops: ['-'], maxAnswer: 6 },
+      2: { ops: ['-'], maxAnswer: 8 },
+      3: { ops: ['-'], maxAnswer: 10 },
+      4: { ops: ['-'], maxAnswer: 12 }, // ここから10超え＝くり下がり
+      5: { ops: ['-'], maxAnswer: 14 },
+      6: { ops: ['-'], maxAnswer: 16 },
+      7: { ops: ['-'], maxAnswer: 18 },
+    },
+    correctKind: 'number',
+    distractors: [],
+    problems: [
+      { question: '2-1', voicePrompt: 'に ひく いち、いくつ？', answer: '1', choices: ['1', '2', '3'] },
+      { question: '3-1', voicePrompt: 'さん ひく いち、いくつ？', answer: '2', choices: ['2', '3', '1'] },
+      { question: '5-2', voicePrompt: 'ご ひく に、いくつ？', answer: '3', choices: ['3', '4', '2'] },
     ],
     rounds: 6,
     targetsPerRound: 3,
