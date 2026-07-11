@@ -17,7 +17,7 @@ export interface Hero {
 export type StageType = 'hiragana' | 'katakana' | 'number' | 'math' | 'boss' | 'english'
 export type TargetKind = 'hiragana' | 'katakana' | 'number' | 'picture' | 'english'
 /** ゲームプレイの型。find=正解さがし / sequence=順序撃ち / math=算数ゲート */
-export type StageMode = 'find' | 'sequence' | 'math'
+export type StageMode = 'find' | 'sequence' | 'math' | 'read'
 /**
  * 英語ステージ（type: 'english'・mode は 'find' を使う）の出題種別。
  * letter=アルファベット認識 / spell=スペル選択 / meaning=英語→意味（ひらがな）

@@ -3,6 +3,7 @@ import { EventBus } from './EventBus'
 import { PhaserGame } from './game/PhaserGame'
 import { STAGES, categoryOf, makeReviewStage } from './data/stages'
 import { StageMap } from './StageMap'
+import { ReadingStage } from './ReadingStage'
 import { CategoryScreen } from './CategoryScreen'
 import { LoginBonus } from './LoginBonus'
 import { Zukan } from './Zukan'
@@ -16,7 +17,7 @@ import bgUrl from './assets/bg.jpg'
 /** タイトル画面に出す登場モンスター（public/assets/monsters/ から） */
 const monsterUrl = (file: string) => `${import.meta.env.BASE_URL}assets/monsters/${file}`
 
-type Screen = 'title' | 'category' | 'map' | 'game' | 'result' | 'failed' | 'zukan'
+type Screen = 'title' | 'category' | 'map' | 'game' | 'read' | 'result' | 'failed' | 'zukan'
 
 /** ライフ0時に Phaser から届く失敗情報 */
 interface StageFailed {
@@ -122,7 +123,7 @@ export default function App() {
     setConfirmQuit(false)
     setCapturedThisRun(false)
     setPlayKey(k => k + 1)
-    setScreen('game')
+    setScreen(s.mode === 'read' ? 'read' : 'game') // ㊿「よむ」は音声入力の専用画面
   }, [])
 
   const backToTitle = useCallback(() => {
@@ -228,6 +229,16 @@ export default function App() {
             </div>
           )}
         </>
+      )}
+
+      {screen === 'read' && (
+        <ReadingStage
+          key={playKey}
+          stage={stage}
+          level={difficulty}
+          onClear={(r) => { setResult(r); setScreen('result') }}
+          onQuit={() => { sfx.uiTap(); voice.cancel(); setScreen('map') }}
+        />
       )}
 
       {screen === 'failed' && failInfo && (

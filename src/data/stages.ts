@@ -1,5 +1,6 @@
 import type { Hero, Stage, StageCategory } from '../types'
-import { HIRAGANA_POOL, KATAKANA_POOL } from './kana'
+import { HIRAGANA_POOL, KATAKANA_POOL, HIRAGANA_SEION } from './kana'
+import { isSpeechSupported } from '../speech'
 
 /**
  * ステージデータ集約ファイル。
@@ -111,6 +112,35 @@ export const STAGES: Stage[] = [
     targetsPerRound: 5,
     reward: 1,
     difficulty: 2,
+  },
+  {
+    id: 'read-1',
+    title: 'よむバトル',
+    type: 'hiragana',
+    mode: 'read', // ㊿ 音声認識で「声に出して読む」ステージ（にほんご）
+    category: 'jp',
+    renderer: '2.5d',
+    recommendedAgeMin: 4,
+    recommendedAgeMax: 6,
+    missionText: 'もじを こえに だして よもう！',
+    voicePrompts: [],
+    correctKind: 'hiragana',
+    correctAnswer: 'あ',
+    distractors: [],
+    battle: {
+      enemyCount: 4,
+      purifyStepsPerEnemy: 1,
+      bossPurifySteps: 1,
+      choiceCount: 1,
+      rideDistance: 50,
+      // 難易度で読む文字数が増える（1〜2=1文字, 3=2文字, 4=3文字…）。プールは清音46。
+      letterPool: HIRAGANA_SEION,
+      poolStart: 12,
+    },
+    rounds: 5,
+    targetsPerRound: 4,
+    reward: 1,
+    difficulty: 1,
   },
   {
     id: 'number-3',
@@ -366,7 +396,10 @@ export const CATEGORY_META: Record<StageCategory, { label: string; icon: string;
 
 /** そのカテゴリに属する（非表示でない）ステージ一覧 */
 export function stagesInCategory(category: StageCategory): Stage[] {
-  return STAGES.filter(s => !s.hidden && categoryOf(s) === category)
+  // ㊿「よむ」は音声認識が使える端末（Chrome/Edge/Android等）だけに出す。
+  //   非対応（iOS Safari等）では出さない＝タップできない。進捗データは温存。
+  const speechOk = isSpeechSupported()
+  return STAGES.filter(s => !s.hidden && categoryOf(s) === category && (s.mode !== 'read' || speechOk))
 }
 
 /** 指定ステージの次のステージ（最後なら null） */

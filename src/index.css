@@ -1108,6 +1108,141 @@ body {
 }
 .review-replay:active { transform: translateY(3px); box-shadow: 0 1px 0 #d6a24d; }
 
+/* ---- ㊿「よむ」ステージ（音声入力） ---- */
+
+.reading-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 2.4vh, 22px);
+  padding: max(env(safe-area-inset-top), 14px) 16px max(env(safe-area-inset-bottom), 14px);
+  background:
+    radial-gradient(120% 90% at 50% 8%, rgba(120, 90, 220, 0.35), transparent 60%),
+    linear-gradient(180deg, #241a4d 0%, #140f2e 100%);
+  color: #fff;
+  overflow: hidden;
+}
+
+.reading-hearts { display: flex; gap: 6px; font-size: clamp(22px, 6vw, 32px); }
+.reading-hearts .rh { filter: grayscale(1) opacity(0.35); transition: filter 0.3s; }
+.reading-hearts .rh.on { filter: none; }
+
+.reading-progress { display: flex; gap: 8px; }
+.reading-progress .rp {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  transition: background 0.3s, transform 0.3s;
+}
+.reading-progress .rp.done { background: #ffd166; }
+.reading-progress .rp.cur { background: #fff; transform: scale(1.4); }
+
+.reading-monster {
+  width: clamp(120px, 34vw, 190px);
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.4s, filter 0.6s, opacity 0.6s;
+  animation: readingFloat 3s ease-in-out infinite;
+}
+.reading-monster img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.4)); }
+.reading-monster.boss { width: clamp(150px, 42vw, 230px); }
+.reading-monster.purified { filter: brightness(1.5) saturate(0.4); transform: scale(0.86) translateY(-6px); opacity: 0.55; }
+
+@keyframes readingFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+
+.reading-card {
+  min-width: clamp(140px, 46vw, 240px);
+  padding: clamp(10px, 2.5vh, 20px) clamp(18px, 5vw, 34px);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 0 rgba(0, 0, 0, 0.22), 0 0 0 4px rgba(255, 209, 102, 0.5);
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+.reading-card.beam {
+  transform: scale(1.06);
+  box-shadow: 0 8px 0 rgba(0, 0, 0, 0.22), 0 0 26px 10px rgba(120, 220, 255, 0.9), 0 0 0 4px #7fdcff;
+}
+.reading-word {
+  display: block;
+  text-align: center;
+  color: #2b2350;
+  font-weight: 900;
+  font-size: clamp(54px, 16vw, 108px);
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+}
+
+.reading-message {
+  margin: 0;
+  min-height: 1.4em;
+  text-align: center;
+  font-size: clamp(15px, 4.2vw, 22px);
+  font-weight: 700;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.reading-controls { display: flex; gap: clamp(12px, 4vw, 24px); align-items: center; }
+
+.reading-mic, .reading-example {
+  border: none;
+  cursor: pointer;
+  font-weight: 800;
+  color: #fff;
+  border-radius: 999px;
+  transition: transform 0.12s, box-shadow 0.12s, filter 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.reading-mic {
+  font-size: clamp(20px, 5.5vw, 28px);
+  padding: clamp(14px, 3.4vh, 22px) clamp(26px, 8vw, 44px);
+  background: linear-gradient(180deg, #ff5f8f 0%, #e8356c 100%);
+  box-shadow: 0 6px 0 #b41f4e;
+}
+.reading-mic:active { transform: translateY(4px); box-shadow: 0 2px 0 #b41f4e; }
+.reading-mic.on { animation: micPulse 1s ease-in-out infinite; filter: brightness(1.15); }
+.reading-mic:disabled { cursor: default; }
+@keyframes micPulse {
+  0%, 100% { box-shadow: 0 6px 0 #b41f4e, 0 0 0 0 rgba(255, 95, 143, 0.6); }
+  50% { box-shadow: 0 6px 0 #b41f4e, 0 0 0 16px rgba(255, 95, 143, 0); }
+}
+.reading-example {
+  font-size: clamp(15px, 4vw, 20px);
+  padding: clamp(12px, 3vh, 18px) clamp(18px, 5.5vw, 30px);
+  background: linear-gradient(180deg, #ffd166 0%, #f0a93c 100%);
+  color: #5a3c0a;
+  box-shadow: 0 5px 0 #cf8a2b;
+}
+.reading-example:active { transform: translateY(3px); box-shadow: 0 2px 0 #cf8a2b; }
+
+.reading-consent {
+  max-width: 460px;
+  margin: auto;
+  background: rgba(255, 255, 255, 0.97);
+  color: #2b2350;
+  border-radius: 24px;
+  padding: clamp(20px, 4vh, 32px) clamp(18px, 5vw, 30px);
+  text-align: center;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+.reading-consent h2 { margin: 0 0 12px; font-size: clamp(22px, 6vw, 30px); }
+.reading-consent-lead { font-size: clamp(16px, 4.4vw, 20px); font-weight: 700; margin: 0 0 16px; }
+.reading-consent-note {
+  font-size: clamp(12px, 3.4vw, 14px);
+  line-height: 1.7;
+  text-align: left;
+  background: #f2eefc;
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin: 0 0 20px;
+  color: #43406b;
+}
+.reading-consent .big-button { margin: 0 auto 10px; }
+.reading-consent .sub-button { margin: 0 auto; }
+
 /* ---- ㊷ ログインボーナス ---- */
 
 .bonus-overlay {
