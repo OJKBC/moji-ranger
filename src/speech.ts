@@ -9,6 +9,13 @@
  * 非対応端末では「よむ」ステージをマップに出さない。
  */
 
+/** 認識結果の1候補 */
+export interface SpeechRecAlternative { transcript: string; confidence?: number }
+/** 1発話ぶんの結果（isFinal=最終確定か、途中経過か） */
+export interface SpeechRecResult extends ArrayLike<SpeechRecAlternative> { isFinal: boolean }
+/** onresult に渡るイベント。resultIndex 以降が新着（continuous 認識で逐次増える） */
+export interface SpeechRecEvent { resultIndex: number; results: ArrayLike<SpeechRecResult> }
+
 /** 最低限の SpeechRecognition 型（標準 lib.dom に無い非標準APIのため自前定義） */
 export interface SpeechRec {
   lang: string
@@ -18,7 +25,7 @@ export interface SpeechRec {
   start(): void
   stop(): void
   abort(): void
-  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null
+  onresult: ((e: SpeechRecEvent) => void) | null
   onerror: ((e: { error: string }) => void) | null
   onend: (() => void) | null
   onaudiostart?: (() => void) | null

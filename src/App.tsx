@@ -3,7 +3,6 @@ import { EventBus } from './EventBus'
 import { PhaserGame } from './game/PhaserGame'
 import { STAGES, categoryOf, makeReviewStage } from './data/stages'
 import { StageMap } from './StageMap'
-import { ReadingStage } from './ReadingStage'
 import { CategoryScreen } from './CategoryScreen'
 import { LoginBonus } from './LoginBonus'
 import { Zukan } from './Zukan'
@@ -17,7 +16,10 @@ import bgUrl from './assets/bg.jpg'
 /** タイトル画面に出す登場モンスター（public/assets/monsters/ から） */
 const monsterUrl = (file: string) => `${import.meta.env.BASE_URL}assets/monsters/${file}`
 
-type Screen = 'title' | 'category' | 'map' | 'game' | 'read' | 'result' | 'failed' | 'zukan'
+type Screen = 'title' | 'category' | 'map' | 'game' | 'mic-consent' | 'result' | 'failed' | 'zukan'
+
+/** ㊿「よむ」ステージ初回に一度だけ表示する保護者向けマイク同意（記録すれば次回以降は省略） */
+const MIC_CONSENT_KEY = 'moji-ranger-mic-consent'
 
 /** ライフ0時に Phaser から届く失敗情報 */
 interface StageFailed {
@@ -122,8 +124,22 @@ export default function App() {
     setCategory(categoryOf(s)) // 地図と直前に遊んだステージのカテゴリを合わせる
     setConfirmQuit(false)
     setCapturedThisRun(false)
+    // ㊿「よむ」は共通エンジンで遊ぶ（画面・進行は他ステージと同じ）。ただし初回だけ、
+    //   ゲーム開始前に保護者向けのマイク同意を挟む（同意後は毎回そのままゲームへ）。
+    if (s.mode === 'read' && localStorage.getItem(MIC_CONSENT_KEY) !== '1') {
+      setScreen('mic-consent')
+      return
+    }
     setPlayKey(k => k + 1)
-    setScreen(s.mode === 'read' ? 'read' : 'game') // ㊿「よむ」は音声入力の専用画面
+    setScreen('game')
+  }, [])
+
+  // マイク同意 → 共通エンジンで「よむ」ステージを開始
+  const acceptMicConsent = useCallback(() => {
+    sfx.uiTap()
+    localStorage.setItem(MIC_CONSENT_KEY, '1')
+    setPlayKey(k => k + 1)
+    setScreen('game')
   }, [])
 
   const backToTitle = useCallback(() => {
@@ -231,14 +247,19 @@ export default function App() {
         </>
       )}
 
-      {screen === 'read' && (
-        <ReadingStage
-          key={playKey}
-          stage={stage}
-          level={difficulty}
-          onClear={(r) => { setResult(r); setScreen('result') }}
-          onQuit={() => { sfx.uiTap(); voice.cancel(); setScreen('map') }}
-        />
+      {screen === 'mic-consent' && (
+        <div className="overlay-screen">
+          <div className="reading-consent">
+            <h2>🎤 「よむ」の あそびかた</h2>
+            <p className="reading-consent-lead">もじを こえに だして よむと、モンスターを きよめられるよ！</p>
+            <p className="reading-consent-note">
+              おうちのかたへ: このステージは <b>マイク</b> を つかいます。声は <b>この端末の中だけで判定</b>し、
+              録音の保存・送信は一切しません。次の画面でマイクの使用を「許可」してください。
+            </p>
+            <button className="big-button" onClick={acceptMicConsent}>▶ はじめる</button>
+            <button className="sub-button" onClick={() => { sfx.uiTap(); setScreen('map') }}>やめる</button>
+          </div>
+        </div>
       )}
 
       {screen === 'failed' && failInfo && (

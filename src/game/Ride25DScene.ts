@@ -18,6 +18,8 @@ import { monsterName } from '../data/monsterNames'
 import { pickDistractors } from '../learning/distractors'
 import { pickNextLetter, pickTargetLetter } from '../learning/picker'
 import { HIRAGANA_POOL, KATAKANA_POOL } from '../data/kana'
+import { getSpeechRecognitionCtor, judgeReading } from '../speech'
+import type { SpeechRec, SpeechRecEvent } from '../speech'
 import {
   captureFailCount, getBuddy, isCaptured, loadProgress,
   recordAnswer, recordCaptureFail, recordCaptureSuccess, recordSeen, recordStageClear,
@@ -211,6 +213,13 @@ export class Ride25DScene extends Phaser.Scene {
   private acceptInput = true
   private stageStartAt = 0
 
+  // ㊿「よむ」ステージ（mode: 'read'）: 声で読むための音声認識。共通エンジンの中で動く。
+  private speechRec: SpeechRec | null = null
+  private speechActive = false
+  private micHud: Phaser.GameObjects.Container | null = null
+  /** 誤答確定の直後は、同じ発話で連続してライフを失わないよう少しの間だけ判定を止める */
+  private voiceLockUntil = 0
+
   constructor(stage: Stage, difficulty: DifficultyLevel = 1) {
     super('Game')
     this.stageData = stage
@@ -391,9 +400,16 @@ export class Ride25DScene extends Phaser.Scene {
       this.aim.y = p.y
       this.shoot(p.x, p.y)
     })
+    // ㊿「よむ」ステージだけ、共通エンジンに音声入力を足す（画面・進行・演出は他ステージと同じ）
+    if (this.stageData.mode === 'read') {
+      this.buildMicHud()
+      this.initSpeech()
+    }
+
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.removeAllListeners()
       voice.cancel()
+      this.teardownSpeech()
     })
 
     // 出発！ 最初の敵がもう前方に見えている
@@ -753,7 +769,55 @@ export class Ride25DScene extends Phaser.Scene {
       this.startMathStep()
       return
     }
+    if (this.stageData.mode === 'read') {
+      this.startReadStep()
+      return
+    }
     this.startFindStep()
+  }
+
+  /**
+   * ㊿ read モード（よむバトル）: 出す文字（難易度で単語に）を「1つのバブル」に見せ、
+   * 子どもが声に出して読む。正しく読めたら「こえビーム」で撃ち抜き、浄化が進む。
+   * find と違い、文字は答えではなく“読む対象”なので画面に表示する（音声で答えは言わない）。
+   * 差分は「入力が声であること」だけ＝バブル・浄化・ライフ・リザルトは共通エンジンのまま。
+   */
+  private startReadStep(): void {
+    this.currentKind = 'hiragana'
+    const count = this.level <= 2 ? 1 : Math.min(6, this.level - 1) // L1-2=1字, L3=2字 … L7=6字
+    if (count === 1) {
+      if (this.bossActive && this.practiced.length > 0) {
+        const recentSet = new Set(this.recentTargets.slice(-3))
+        const uniq = [...new Set(this.practiced)]
+        const cands = uniq.filter(l => !recentSet.has(l))
+        this.currentTarget = pickNextLetter(cands.length ? cands : uniq, 'hiragana')
+      } else {
+        this.currentTarget = pickTargetLetter(
+          this.battle.letterPool, this.battle.poolStart, 'hiragana', this.recentTargets,
+        )
+      }
+    } else {
+      this.currentTarget = this.pickReadWord(count)
+    }
+    this.recentTargets.push(this.currentTarget)
+    this.time.delayedCall(this.tune.fastPrompt ? 260 : 340, () => {
+      this.spawnBubbleArc([this.currentTarget]) // 選択肢は1つ（読む対象）
+      recordSeen(this.currentTarget, this.currentKind)
+      // 答えは読み上げない（自分で読む）。合図だけ。
+      voice.speak('よんでみてね！')
+      this.beginStepInput()
+      this.ensureListening()
+    })
+  }
+
+  /** read モード: 指定文字数の単語をプールから選ぶ（直近回避）。無ければフォールバック */
+  private pickReadWord(count: number): string {
+    const pool = wordsForLevel(this.level).filter(w => [...w.word].length === count).map(w => w.word)
+    const src = pool.length ? pool : [this.stageData.word ?? 'ねこ']
+    const recent = new Set(this.recentTargets.slice(-3))
+    const avail = src.filter(w => !recent.has(w))
+    const pickFrom = avail.length ? avail : src
+    return pickFrom[Phaser.Math.Between(0, pickFrom.length - 1)]
   }
 
   /** find モード: 音声のみで狙う文字を伝える（従来のひらがな/カタカナこうえん） */
@@ -1141,6 +1205,7 @@ export class Ride25DScene extends Phaser.Scene {
    */
   private spawnBubbleArc(labels: string[]): void {
     const RING: Record<number, Array<[number, number]>> = {
+      1: [[0, 335]], // ㊿ read: 読む対象を1つ、中央に大きく
       2: [[-330, 260], [330, 260]],
       3: [[-335, 280], [335, 280], [0, 480]],
       4: [[-345, 245], [345, 245], [-235, 460], [235, 460]],
@@ -1166,6 +1231,132 @@ export class Ride25DScene extends Phaser.Scene {
     this.stepStartAt = this.time.now
     this.stepActive = true
     this.updateDebugHook()
+  }
+
+  // ----------------------------------------------------- ㊿ 音声入力（read モード）
+
+  /**
+   * 音声認識を初期化して回しっぱなしにする（continuous）。毎回 start/stop すると
+   * 起動ラグ（数百ms）が乗るため、認識は開始したら維持し、発話のたびに逐次判定する。
+   * interimResults=true で「途中経過」を受け取り、finalを待たずに正解を判定＝速い。
+   */
+  private initSpeech(): void {
+    const Ctor = getSpeechRecognitionCtor()
+    if (!Ctor) return // 非対応端末（そもそも stagesInCategory で出さないが防御的に）
+    const rec = new Ctor()
+    rec.lang = 'ja-JP'
+    rec.continuous = true
+    rec.interimResults = true
+    rec.maxAlternatives = 3
+    rec.onresult = (e: SpeechRecEvent) => this.onSpeechResult(e)
+    rec.onerror = () => { /* no-speech/permission等。onend で再開する */ }
+    rec.onend = () => {
+      this.speechActive = false
+      // シーンが生きていれば認識を再開（無音タイムアウト等で切れても聞き続ける）
+      if (this.phase !== 'finished' && !this.failed && this.stageData.mode === 'read') {
+        this.time.delayedCall(120, () => this.startSpeech())
+      }
+    }
+    this.speechRec = rec
+    this.startSpeech()
+  }
+
+  private startSpeech(): void {
+    if (!this.speechRec || this.speechActive) return
+    try { this.speechRec.start(); this.speechActive = true } catch { this.speechActive = false }
+  }
+
+  /** 出題ごとに、確実に聞いている状態にする（切れていたら再開） */
+  private ensureListening(): void {
+    if (this.stageData.mode !== 'read') return
+    if (!this.speechActive) this.startSpeech()
+    this.setMicListening(true)
+  }
+
+  private teardownSpeech(): void {
+    const rec = this.speechRec
+    this.speechRec = null
+    this.speechActive = false
+    if (rec) {
+      rec.onresult = null; rec.onerror = null; rec.onend = null
+      try { rec.abort() } catch { /* noop */ }
+    }
+  }
+
+  /**
+   * 認識結果の処理。**正解側は速く・誤答側は慎重に**：
+   * - 途中経過(interim)でも一致（寛容判定）したら final を待たず即・正解演出（体感1秒以内）。
+   * - 「明確に違う読み」で不正解を確定するのは **final のみ**（interim の誤認識で損をさせない）。
+   * - 認識できなかった（unheard）は誤答にせず放置＝自然にやり直し。
+   */
+  private onSpeechResult(e: SpeechRecEvent): void {
+    if (this.stageData.mode !== 'read' || !this.stepActive) return
+    if (this.time.now < this.voiceLockUntil) return
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const res = e.results[i]
+      const alts: string[] = []
+      for (let j = 0; j < res.length; j++) alts.push(res[j].transcript)
+      const verdict = judgeReading(alts, this.currentTarget)
+      if (import.meta.env.DEV) {
+        const w = window as unknown as Record<string, unknown>
+        w.__readProbe = { alts, target: this.currentTarget, verdict, isFinal: res.isFinal }
+      }
+      if (verdict === 'ok') { this.onVoiceCorrect(); return } // 正解は interim でも即
+      if (res.isFinal && verdict === 'wrong') { this.onVoiceWrong(); return } // 誤答確定は final のみ
+      // interim の 'wrong' / 'unheard' は無視（やり直し）
+    }
+  }
+
+  /** 正しく読めた: こえビームでバブルを撃ち抜き、共通の正解処理へ（浄化が進む） */
+  private onVoiceCorrect(): void {
+    if (!this.stepActive) return
+    const b = this.bubbles.find(x => x.alive && x.label === this.currentTarget) ?? this.bubbles.find(x => x.alive)
+    if (!b) return
+    this.micPulse()
+    this.drawBeam(b.container.x, b.container.y) // 声に反応して両手からビーム＝こえビーム
+    sfx.shoot()
+    this.resolveCorrect(b)
+  }
+
+  /** 明確に違う読み（final確定）: 共通の誤答処理へ（やさしい訂正＋ライフ-1） */
+  private onVoiceWrong(): void {
+    if (import.meta.env.DEV) {
+      const w = window as unknown as Record<string, unknown>
+      w.__wrongProbe = { stepActive: this.stepActive, bubbles: this.bubbles.length, alive: this.bubbles.filter(x => x.alive).length }
+    }
+    if (!this.stepActive) return
+    const b = this.bubbles.find(x => x.alive)
+    if (!b) return
+    // 1発話＝最大ライフ1。次の発話まで少し判定を止める（誤認識の連発で損をさせない）
+    this.voiceLockUntil = this.time.now + 1600
+    this.resolveWrong(b)
+  }
+
+  /** 「聞いてるよ」を示すマイクHUD（HUD内・モンスターや文字と重ならない上部中央） */
+  private buildMicHud(): void {
+    const ring = this.add.circle(0, 0, 30, 0xff5f8f, 0.9)
+    const inner = this.add.circle(0, 0, 22, 0xffffff, 0.18)
+    const icon = this.add.text(0, 0, '🎤', { fontSize: '30px' }).setOrigin(0.5)
+    // 波形風の3本バー（聞いている合図）
+    const bars = [-14, 0, 14].map((dx, i) => {
+      const bar = this.add.rectangle(dx, 34, 6, 12, 0xffffff, 0.9).setOrigin(0.5, 0.5)
+      this.tweens.add({
+        targets: bar, scaleY: 2.1, duration: 380 + i * 90, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      })
+      return bar
+    })
+    this.micHud = this.add.container(GAME_W / 2, 70, [ring, inner, icon, ...bars]).setDepth(8050)
+    this.tweens.add({ targets: ring, scale: 1.22, alpha: 0.5, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+  }
+
+  private setMicListening(on: boolean): void {
+    if (this.micHud) this.micHud.setAlpha(on ? 1 : 0.5)
+  }
+
+  /** 声を拾って正解した瞬間、マイクHUDがぱっと弾む */
+  private micPulse(): void {
+    if (!this.micHud) return
+    this.tweens.add({ targets: this.micHud, scale: 1.3, duration: 120, yoyo: true, ease: 'Sine.easeOut' })
   }
 
   /**
@@ -1198,6 +1389,11 @@ export class Ride25DScene extends Phaser.Scene {
     if (this.stageData.mode === 'sequence') {
       // 単語モードの聞き直しは単語そのもの（「しか！」）
       if (this.currentWord) voice.speak(`${this.currentWord}！`)
+      return
+    }
+    if (this.stageData.mode === 'read') {
+      // ㊿ read は答えを読み上げない（自分で読む）。合図だけ。
+      voice.speak('よんでみてね！')
       return
     }
     if (this.currentTarget) voice.speak(`${this.currentTarget}！`, { rate: 0.7 })
@@ -1274,7 +1470,10 @@ export class Ride25DScene extends Phaser.Scene {
     const reaction = this.time.now - this.stepStartAt
     this.recordStat(true, reaction)
     this.sessionCorrect++
-    if (this.stageData.mode === 'find' && !this.practiced.includes(this.currentTarget)) {
+    // find・read（1文字）の正解文字は、ボスの復習出題プール（practiced）に貯める
+    const isSingleReadOrFind = this.stageData.mode === 'find'
+      || (this.stageData.mode === 'read' && [...this.currentTarget].length === 1)
+    if (isSingleReadOrFind && !this.practiced.includes(this.currentTarget)) {
       this.practiced.push(this.currentTarget)
     }
 
@@ -1781,6 +1980,7 @@ export class Ride25DScene extends Phaser.Scene {
     this.wrongThisStep++
     this.wrongTapStreak++
     this.wrongTotal++
+    this.updateDebugHook()
 
     this.tweens.add({ targets: b.container, angle: 10, duration: 60, yoyo: true, repeat: 3 })
 
@@ -1923,6 +2123,7 @@ export class Ride25DScene extends Phaser.Scene {
       heart.setText('🌫️').setAlpha(0.9)
       this.tweens.add({ targets: heart, scale: 1.3, duration: 140, yoyo: true })
     }
+    this.updateDebugHook()
     if (this.lives === 1) {
       this.assistStruggling()
     } else if (this.lives <= 0) {
@@ -2378,6 +2579,8 @@ export class Ride25DScene extends Phaser.Scene {
         monsterKey: this.lastMonsterKey,
         lives: this.lives,
         wrongTotal: this.wrongTotal,
+        sessionCorrect: this.sessionCorrect,
+        stepActive: this.stepActive,
         hasQuestionIcon: !!this.questionIcon,
       }
       w.__debugTargets = this.bubbles
