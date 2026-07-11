@@ -183,7 +183,14 @@ export const MONSTER_FILES = {
   "monster-strong-125.png",
   "monster-strong-126.png",
   "monster-strong-127.png",
-  "monster-strong-128.png"
+  "monster-strong-128.png",
+  "monster-strong-129.png",
+  "monster-strong-130.png",
+  "monster-strong-131.png",
+  "monster-strong-132.png",
+  "monster-strong-133.png",
+  "monster-strong-134.png",
+  "monster-strong-135.png"
 ],
   /** ボス専用画像（空なら strong グループから選ぶ）。専用画像ができたらここに追加 */
   boss: [] as string[],

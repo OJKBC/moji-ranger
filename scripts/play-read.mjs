@@ -1,9 +1,11 @@
-// ㊿「よむ」ステージ（共通エンジン版）の検証：
+// ㊿「よむ」ステージ（共通エンジン・press-to-talk版）の検証：
 //  1) 非対応端末では地図に read-1 が出ない／対応端末では出る
 //  2) マイク同意→共通エンジンのゲーム画面（canvas）で遊べる
-//  3) interim（途中経過）で正解が即成立する＝finalを待たない（反応速度）
+//  3) 「はなす」を押す→interim（途中経過）で正解が即成立＝finalを待たない（反応速度）
 //  4) 不正解の確定は final のみ（interimのwrongでライフを減らさない）
 //  5) 認識失敗（空）は誤答にしない
+//  6) タップだけでは正解にならない（声のみ・(a)修正）
+//  7) ボタンを押していないときは判定しない（雑音を誤答にしない・(b)(c)の根治）
 import puppeteer from 'puppeteer-core'
 
 const OUT = process.argv[2] ?? 'C:/Users/chiri/AppData/Local/Temp/claude/C--Users-chiri/644ad3a8-dbe9-4c69-bc2f-d9120996fa50/scratchpad'
@@ -89,26 +91,47 @@ for (let i = 0; i < 40; i++) { const s = await st(); if (s && s.stepActive && s.
 await sleep(300)
 await page.screenshot({ path: `${OUT}/read-B-game.png` })
 const canvasExists = await page.evaluate(() => !!document.querySelector('canvas'))
-console.log('4) 共通エンジンのcanvas:', canvasExists, '/ HUDマイク・両手・モンスターは共通（画像確認 read-B-game.png）')
+console.log('4) 共通エンジンのcanvas:', canvasExists, '/ HUD(はなすボタン・きいてるよ)・両手・モンスターは共通（read-B-game.png）')
 
-// --- (5) 認識失敗（空）は誤答にしない ---
+const press = () => page.evaluate(() => window.__readPress && window.__readPress())
+
+// --- (7) ボタンを押していないとき（＝聞いていない）に雑音を送っても判定しない ---
+let sN = await st()
+const livesNoBtn = sN.lives, correctNoBtn = sN.sessionCorrect
+await page.evaluate(t => window.__emitRead(t, true), sN.target) // ボタン未押下で正解読みを送っても…
+await page.evaluate(() => window.__emitRead('ゑゑ', true)) // …雑音を送っても
+await sleep(250)
+let sN2 = await st()
+console.log('7) ボタン未押下で送信 → correct:', sN2.sessionCorrect, '(期待', correctNoBtn, ') ライフ:', sN2.lives, '(期待', livesNoBtn, ')＝聞いていないので無反応')
+
+// --- (6) タップ（ポインタ）だけでは正解にならない ---
+const box = await page.evaluate(() => { const c = document.querySelector('canvas'); const r = c.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height } })
+const s6 = await st()
+// バブルは中央付近(GAME 480,335 相当)。canvas中央あたりをタップ
+await page.mouse.click(box.x + box.w * 0.5, box.y + box.h * 0.52)
+await sleep(300)
+const s6b = await st()
+console.log('6) 中央バブルをタップ → correct:', s6b.sessionCorrect, '(期待', s6.sessionCorrect, '=増えない) ライフ:', s6b.lives)
+
+// --- (5) 認識失敗（空）は誤答にしない（ボタンを押して空を送る） ---
 let s0 = await st()
 const livesBefore = s0.lives
+await press()
 await page.evaluate(() => window.__emitRead('', true))
 await sleep(250)
 let s1 = await st()
 console.log('5) 認識失敗(空)後 ライフ:', s1.lives, '(期待', livesBefore, '=減らない) / correct:', s1.sessionCorrect)
 
-// --- (2)(3) interim(途中経過)で正解が即成立する＝finalを待たない ---
+// --- (2)(3) 「はなす」を押す→interimで正解が即成立＝finalを待たない ---
 let interimOk = 0, reactionMs = []
 for (let round = 0; round < 3; round++) {
   const before = await st()
   if (!before || !before.stepActive) { await sleep(400); continue }
   const target = before.target
+  await press() // はなすボタンを押す
+  await sleep(30)
   const t0 = Date.now()
-  // isFinal=false（＝途中経過）だけを送る。finalは送らない。
-  await page.evaluate(t => window.__emitRead(t, false), target)
-  // sessionCorrect が増える＝interimで正解成立
+  await page.evaluate(t => window.__emitRead(t, false), target) // isFinal=false（途中経過）だけ
   let ok = false
   for (let k = 0; k < 20; k++) {
     const now = await st()
@@ -116,30 +139,23 @@ for (let round = 0; round < 3; round++) {
     await sleep(20)
   }
   if (ok) interimOk++
-  // 次の出題へ進むのを待つ（敵が倒れて次の敵が来るまで＝前進あり・長めに待つ）
   for (let k = 0; k < 80; k++) { const n = await st(); if (n.stepActive && n.target !== target) break; await sleep(80) }
 }
-console.log('3) interimのみで正解成立した回数:', interimOk, '/3 （finalを待たず即） 反応(ms):', reactionMs.join(','))
+console.log('3) 押す→interimのみで正解した回数:', interimOk, '/3 （finalを待たず即） 反応(ms):', reactionMs.join(','))
 
-// --- (3) 不正解の確定は final のみ：interimのwrongでは減らない ---
+// --- (4) 不正解の確定は final のみ：interimのwrongでは減らない ---
 const b2 = await st()
 const livesPre = b2.lives
-const tgt = b2.target
-// interim で明確に違う読みを送る → 減らないはず
-await page.evaluate(() => window.__emitRead('ゑゑ', false))
+await press()
+await page.evaluate(() => window.__emitRead('ゑゑ', false)) // interim wrong → 減らない
 await sleep(300)
 const midWrong = await st()
-console.log('3) interimのwrong後 ライフ:', midWrong.lives, '(期待', livesPre, '=減らない)')
-// final で明確に違う読みを送る → 1減るはず
-const preEmit = await st()
-const emitted = await page.evaluate(() => window.__emitRead('ゑゑ', true))
-await sleep(100)
-const probe = await page.evaluate(() => window.__readProbe ?? null)
-  const wprobe = await page.evaluate(() => window.__wrongProbe ?? null)
-console.log('   [debug] emit final wrong:', emitted, 'preEmit stepActive=', preEmit.stepActive, 'target=', preEmit.target, 'probe=', JSON.stringify(probe), 'wrongProbe=', JSON.stringify(wprobe))
+console.log('4) interimのwrong後 ライフ:', midWrong.lives, '(期待', livesPre, '=減らない)')
+await press()
+await page.evaluate(() => window.__emitRead('ゑゑ', true)) // final wrong → 1減る
 await sleep(1000)
 const afterWrong = await st()
-console.log('   finalのwrong後 ライフ:', afterWrong.lives, '(期待', livesPre - 1, ') wrongTotal:', afterWrong.wrongTotal, 'tgt=', tgt)
+console.log('4) finalのwrong後 ライフ:', afterWrong.lives, '(期待', livesPre - 1, ') wrongTotal:', afterWrong.wrongTotal)
 
 console.log('pageerrors:', errors.length)
 await browser.close()

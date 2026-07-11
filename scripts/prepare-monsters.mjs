@@ -121,7 +121,11 @@ const makeSheet = process.argv.includes('--sheet')
 const MAP_PATH = path.join(root, 'monster-map.json')
 const map = fs.existsSync(MAP_PATH) ? JSON.parse(fs.readFileSync(MAP_PATH, 'utf8')) : {}
 
+/** ファイル名（拡張子なし）がひらがな主体か＝そのまま「なまえ」に使える（長音符ーを含む） */
+const isHiraganaName = s => /^[ぁ-ゖー]+$/.test(s)
+
 const manifest = {}
+const idToSrc = {} // ID → 元ファイル名（拡張子なし）。名前づけ・報告に使う
 for (const { srcDir, prefix } of groups) {
   const dir = path.join(SRC, srcDir)
   const files = fs.readdirSync(dir)
@@ -136,7 +140,9 @@ for (const { srcDir, prefix } of groups) {
   for (const f of files) {
     const mapKey = `${srcDir}/${f}`
     if (!map[mapKey]) map[mapKey] = `${prefix}-${nextFree++}`
-    entries.push({ f, outName: `${map[mapKey]}.png`, n: Number(map[mapKey].slice(prefix.length + 1)) })
+    const id = map[mapKey]
+    idToSrc[id] = f.replace(/\.png$/i, '')
+    entries.push({ f, outName: `${id}.png`, n: Number(id.slice(prefix.length + 1)) })
   }
   entries.sort((a, b) => a.n - b.n)
 
@@ -195,3 +201,43 @@ export const MONSTER_FILES = {
 fs.writeFileSync(MAP_PATH, JSON.stringify(map, null, 2))
 fs.writeFileSync(MANIFEST, ts)
 console.log('monsterManifest.ts generated')
+
+// --- ③ なまえ manifest（src/data/monster-names.json）を更新する ---
+// 名前の唯一の元データ。ここに **無いIDだけ** 追記する（既存の手直しは絶対に上書きしない）。
+// 元ファイル名がひらがな（例: どらごんきんぐ.png）なら、その名前をそのまま登録する。
+const NAMES_PATH = path.join(root, '..', 'src', 'data', 'monster-names.json')
+const names = fs.existsSync(NAMES_PATH) ? JSON.parse(fs.readFileSync(NAMES_PATH, 'utf8')) : {}
+const numOf = id => Number(id.split('-')[2])
+const grpRank = id => (id.startsWith('monster-weak') ? 0 : 1)
+const allIds = Object.values(map).sort((a, b) => grpRank(a) - grpRank(b) || numOf(a) - numOf(b))
+let added = 0
+const hiraganaAssigned = []
+for (const id of allIds) {
+  if (names[id]) continue // 既存の名前は尊重（手直しを壊さない）
+  const src = idToSrc[id]
+  if (src && isHiraganaName(src)) {
+    names[id] = src // ひらがなファイル名＝そのまま「なまえ」
+    hiraganaAssigned.push(`${id} ← ${src}`)
+    added++
+  }
+  // ひらがな名でないものは、あえて登録しない＝monsterName() が「もやもやNごう」の仮名を返す。
+  // （後で monster-names.json に書けば、その名前に差し替わる）
+}
+// 並びを ID 順に整えて書き出す（編集しやすいように）
+const sorted = {}
+for (const id of allIds) if (names[id]) sorted[id] = names[id]
+// map に無いIDの名前も残す（安全側）
+for (const id of Object.keys(names)) if (!sorted[id]) sorted[id] = names[id]
+fs.writeFileSync(NAMES_PATH, JSON.stringify(sorted, null, 2) + '\n')
+console.log(`monster-names.json updated: +${added} name(s)`)
+if (hiraganaAssigned.length) console.log('  ひらがな名を登録:', hiraganaAssigned.join(' / '))
+
+// --- ID・ファイル名・なまえ の一覧（編集の手がかり）を scratchpad に出す ---
+const roster = allIds.map(id => {
+  const src = idToSrc[id] ?? '(既存・元不明)'
+  const name = names[id] ?? `もやもや${allIds.indexOf(id) + 1}ごう(仮)`
+  return `${id}\t${id}.png\t元:${src}\tなまえ:${name}`
+}).join('\n')
+const ROSTER_PATH = path.join(SHEET_DIR, 'monster-roster.txt')
+try { fs.writeFileSync(ROSTER_PATH, roster + '\n') ; console.log(`roster written: ${ROSTER_PATH}`) } catch { /* scratchpad 無い環境は無視 */ }
+console.log(`total monsters: ${allIds.length}（weak ${allIds.filter(i => grpRank(i) === 0).length} / strong ${allIds.filter(i => grpRank(i) === 1).length}）`)
