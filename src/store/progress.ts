@@ -242,6 +242,27 @@ export function collectWeakItems(minScore = 2): WeakItem[] {
   return out.sort((a, b) => b.score - a.score)
 }
 
+/**
+ * ㊾c ふくしゅうステージの出現条件（にがてかな数）。データで調整可。
+ * これ以上にがてが溜まったらマップに「ふくしゅうステージ」が出る。
+ */
+export const REVIEW_MIN_WEAK = 5
+
+/**
+ * ㊾c ふくしゅうステージ用の「にがてかな」（ひらがな/カタカナ）を強い順に返す。
+ * letterStats（かなの学習統計）だけから判定する（新しい統計は作らない）。
+ * すうじ・さんすう・えいごは各ステージ内の間隔反復で復習するため、ここでは対象外。
+ */
+export function weakKanaForReview(max = 12): string[] {
+  const p = loadProgress()
+  return Object.entries(p.letterStats)
+    .map(([label, s]) => ({ label, score: weaknessScore(s) }))
+    .filter(x => x.score > 0 && /[ぁ-ゖァ-ヶー]/.test(x.label))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, max)
+    .map(x => x.label)
+}
+
 /** ラウンド開始時に「出題された」ことを記録する */
 export function recordSeen(label: string, kind: TargetKind | 'math'): void {
   const progress = loadProgress()

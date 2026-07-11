@@ -26,6 +26,8 @@ interface Props {
   onSelect: (stage: Stage, level: DifficultyLevel) => void
   onBack: () => void
   onZukan: () => void
+  /** ㊾c にがてが溜まったときだけ渡される「ふくしゅうステージ」（キラキラの特別ノード） */
+  reviewStage?: Stage | null
 }
 
 /**
@@ -35,7 +37,7 @@ interface Props {
  * 選択の自由は狭めない（⑫⑲）: カテゴリ内のステージは（解放済みなら）タップで選べる。
  * 各ステージ内の難易度ゲートは維持（クリアで次のレベルへ）。スクロール可・safe area 対応。
  */
-export function StageMap({ category, onSelect, onBack, onZukan }: Props) {
+export function StageMap({ category, onSelect, onBack, onZukan, reviewStage }: Props) {
   const progress = loadProgress()
   const stages = stagesInCategory(category)
   const meta = CATEGORY_META[category]
@@ -72,6 +74,21 @@ export function StageMap({ category, onSelect, onBack, onZukan }: Props) {
       </div>
 
       <div className="pathmap" style={{ ['--cat-color' as string]: meta.color }}>
+        {/* ㊾c ふくしゅうステージ（にがてが溜まったときだけ・キラキラの特別ノード） */}
+        {reviewStage && (
+          <button
+            className="review-stage-node"
+            onClick={() => { sfx.uiTap(); onSelect(reviewStage, 1) }}
+          >
+            <span className="review-stage-spark" aria-hidden>✨</span>
+            <span className="review-stage-icon">📖</span>
+            <span className="review-stage-text">
+              <b>ふくしゅうステージ</b>
+              <small>にがてを おさらいしよう！</small>
+            </span>
+            <span className="review-stage-spark right" aria-hidden>✨</span>
+          </button>
+        )}
         {/* スタート地点（旗） */}
         <div className="path-start">🚩 スタート</div>
         {stages.map((stage, i) => {

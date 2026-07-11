@@ -136,6 +136,11 @@ export interface Stage {
   unlock?: { stageId: string; minLevel: DifficultyLevel }
   /** true ならステージマップに出さない（データ・進捗は温存したまま無効化） */
   hidden?: boolean
+  /**
+   * ㊾c ふくしゅうステージ（動的生成）。true のとき:
+   * 出題はにがて項目だけ・文字種はターゲットごとに自動判定・クリアで特別称賛＋星ボーナス。
+   */
+  isReview?: boolean
   /** math モード: 難易度別のランダム出題パラメータ（あれば problems より優先） */
   mathLevels?: Record<number, MathLevelSpec>
   /** english ステージの出題種別（type: 'english' のとき必須。出題内容は src/data/english.ts） */

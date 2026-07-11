@@ -775,6 +775,11 @@ export class Ride25DScene extends Phaser.Scene {
         this.battle.letterPool, this.battle.poolStart, this.currentKind, this.recentTargets,
       )
     }
+    // ㊾c ふくしゅうは ひらがな・カタカナが混在するので、文字種をターゲットごとに判定する
+    // （選択肢・読み上げを正しい文字種で揃える）。通常ステージは correctKind のまま。
+    if (this.stageData.isReview) {
+      this.currentKind = /[ァ-ヶー]/.test(this.currentTarget) ? 'katakana' : 'hiragana'
+    }
     this.recentTargets.push(this.currentTarget)
 
     // 難易度調整: 正答率70〜85%帯を狙う（全難易度共通のセーフティ）

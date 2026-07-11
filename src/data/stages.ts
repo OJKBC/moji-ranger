@@ -308,6 +308,44 @@ export const STAGES: Stage[] = [
   },
 ]
 
+/**
+ * ㊾c ふくしゅうステージ（動的生成）。にがてかなだけを出題する短めの find ステージ。
+ * STAGES には入れず、にがてが溜まったときだけマップに差し込む（App / StageMap）。
+ * クリアで star ボーナス＋特別称賛。プレイ中に正解すると にがて度が下がり、やがて消える。
+ */
+export function makeReviewStage(letters: string[]): Stage {
+  const pool = letters.length ? letters : ['あ']
+  return {
+    id: 'review-jp',
+    title: 'ふくしゅう',
+    type: 'hiragana',
+    mode: 'find',
+    category: 'jp',
+    renderer: '2.5d',
+    isReview: true,
+    recommendedAgeMin: 4,
+    recommendedAgeMax: 6,
+    missionText: 'にがてを おさらい しよう！',
+    voicePrompts: [],
+    correctKind: 'hiragana', // 実際の文字種はターゲットごとに自動判定（engine 側）
+    correctAnswer: pool[0],
+    distractors: [],
+    battle: {
+      enemyCount: 3,
+      purifyStepsPerEnemy: 1,
+      bossPurifySteps: 3,
+      choiceCount: 5,
+      rideDistance: 50,
+      letterPool: pool,
+      poolStart: pool.length, // にがてだけなので全部を最初から対象にする
+    },
+    rounds: 4,
+    targetsPerRound: 3,
+    reward: 2, // 星ボーナス多め（特別ステージ）
+    difficulty: 1,
+  }
+}
+
 /** ㊺ ステージの大枠カテゴリ（明示指定が無ければ type から推定） */
 export function categoryOf(stage: Stage): StageCategory {
   if (stage.category) return stage.category

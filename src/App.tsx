@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { EventBus } from './EventBus'
 import { PhaserGame } from './game/PhaserGame'
-import { STAGES, categoryOf } from './data/stages'
+import { STAGES, categoryOf, makeReviewStage } from './data/stages'
 import { StageMap } from './StageMap'
 import { CategoryScreen } from './CategoryScreen'
 import { LoginBonus } from './LoginBonus'
 import { Zukan } from './Zukan'
-import { canClaimBonus, isStageUnlocked, loadProgress } from './store/progress'
+import { REVIEW_MIN_WEAK, canClaimBonus, isStageUnlocked, loadProgress, weakKanaForReview } from './store/progress'
 import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
 import { MAX_DIFFICULTY } from './types'
@@ -151,6 +151,12 @@ export default function App() {
   }, [])
 
   const next = result ? nextChallengeOf(result) : null
+  // ㊾c にほんごの地図で、にがてかなが一定数たまったら「ふくしゅうステージ」を出す。
+  //   クリアや習熟でにがてが減れば、再計算で自動的に消える。
+  const reviewStage = (screen === 'map' && category === 'jp')
+    ? (() => { const weak = weakKanaForReview(); return weak.length >= REVIEW_MIN_WEAK ? makeReviewStage(weak) : null })()
+    : null
+  const isReviewResult = result?.stageId === 'review-jp'
 
   return (
     <div className="app" style={{ backgroundImage: `url(${bgUrl})` }}>
@@ -188,6 +194,7 @@ export default function App() {
           onSelect={playStage}
           onBack={() => { sfx.uiTap(); setScreen('category') }}
           onZukan={() => openZukan('map')}
+          reviewStage={reviewStage}
         />
       )}
 
@@ -257,7 +264,7 @@ export default function App() {
           >
             ⬅
           </button>
-          <h2 className="result-heading">よくできました！</h2>
+          <h2 className="result-heading">{isReviewResult ? '🌟 ふくしゅう だいせいこう！' : 'よくできました！'}</h2>
           <div className="result-stars">
             {[1, 2, 3].map(n => (
               <span
@@ -270,8 +277,9 @@ export default function App() {
             ))}
           </div>
           <p className="result-detail">
-            {STAGES.find(s => s.id === result.stageId)?.title ?? ''} レベル{result.difficulty} クリア！
-            {result.maxCombo >= 3 && <> さいだい れんぞく ×{result.maxCombo}！</>}
+            {isReviewResult
+              ? 'にがてを たくさん おさらいできたね！'
+              : <>{STAGES.find(s => s.id === result.stageId)?.title ?? (result.stageId === stage.id ? stage.title : '')} レベル{result.difficulty} クリア！{result.maxCombo >= 3 && <> さいだい れんぞく ×{result.maxCombo}！</>}</>}
           </p>
           {result.reviewItem && <ReviewCard item={result.reviewItem} />}
           {next && (
