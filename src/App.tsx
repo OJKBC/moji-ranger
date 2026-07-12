@@ -3,6 +3,7 @@ import { EventBus } from './EventBus'
 import { PhaserGame } from './game/PhaserGame'
 import { STAGES, categoryOf, makeReviewStage } from './data/stages'
 import { StageMap } from './StageMap'
+import { isSpeechSupported } from './speech'
 import { CategoryScreen } from './CategoryScreen'
 import { LoginBonus } from './LoginBonus'
 import { Zukan } from './Zukan'
@@ -126,7 +127,9 @@ export default function App() {
     setCapturedThisRun(false)
     // ㊿「よむ」は共通エンジンで遊ぶ（画面・進行は他ステージと同じ）。ただし初回だけ、
     //   ゲーム開始前に保護者向けのマイク同意を挟む（同意後は毎回そのままゲームへ）。
-    if (s.mode === 'read' && localStorage.getItem(MIC_CONSENT_KEY) !== '1') {
+    // 音声認識が使える端末で、まだ同意していないときだけマイク案内を出す
+    // （使えない端末はタップで遊ぶのでマイク案内は不要）。
+    if (s.mode === 'read' && isSpeechSupported() && localStorage.getItem(MIC_CONSENT_KEY) !== '1') {
       setScreen('mic-consent')
       return
     }

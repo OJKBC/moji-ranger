@@ -142,6 +142,10 @@ export const WORDS: WordSpec[] = [
   { word: 'おかしのいえ', celebration: '🍭' },
   { word: 'おすしやさん', celebration: '🍣' },
   { word: 'たいようけい', celebration: '🌞' },
+  { word: 'まほうつかい', celebration: '🧙' },
+  { word: 'おすもうさん', celebration: '🤼' },
+  { word: 'かみなりさま', celebration: '⚡' },
+  { word: 'にじいろそら', celebration: '🌈' },
 ]
 
 /** 難易度に応じた文字数の単語だけを返す。

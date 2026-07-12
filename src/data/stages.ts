@@ -1,6 +1,5 @@
 import type { Hero, Stage, StageCategory } from '../types'
 import { HIRAGANA_POOL, KATAKANA_POOL, HIRAGANA_SEION } from './kana'
-import { isSpeechSupported } from '../speech'
 
 /**
  * ステージデータ集約ファイル。
@@ -396,10 +395,9 @@ export const CATEGORY_META: Record<StageCategory, { label: string; icon: string;
 
 /** そのカテゴリに属する（非表示でない）ステージ一覧 */
 export function stagesInCategory(category: StageCategory): Stage[] {
-  // ㊿「よむ」は音声認識が使える端末（Chrome/Edge/Android等）だけに出す。
-  //   非対応（iOS Safari等）では出さない＝タップできない。進捗データは温存。
-  const speechOk = isSpeechSupported()
-  return STAGES.filter(s => !s.hidden && categoryOf(s) === category && (s.mode !== 'read' || speechOk))
+  // ㊿「よむ」は常に表示する。音声認識が使えない端末（①⑩）では「はなす」ボタンを出さず、
+  //   タップで読めたことにして遊べる（Ride25DScene 側でフォールバック）。
+  return STAGES.filter(s => !s.hidden && categoryOf(s) === category)
 }
 
 /** 指定ステージの次のステージ（最後なら null） */

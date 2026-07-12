@@ -54,7 +54,9 @@ export const MONSTER_FILES = {
   "monster-weak-48.png",
   "monster-weak-49.png",
   "monster-weak-50.png",
-  "monster-weak-51.png"
+  "monster-weak-51.png",
+  "monster-weak-52.png",
+  "monster-weak-53.png"
 ],
   strong: [
   "monster-strong-1.png",

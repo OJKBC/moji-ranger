@@ -53,9 +53,21 @@ function toHira(s: string): string {
   return s.replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60))
 }
 
-/** 比較用に正規化: ひらがな化・かな以外（空白/記号/漢字/英字）を除去 */
+/** 小さいかな→大きいかな（きゃ≒きや・がっこう≒がこう などの揺れを吸収） */
+const SMALL_TO_LARGE: Record<string, string> = {
+  ぁ: 'あ', ぃ: 'い', ぅ: 'う', ぇ: 'え', ぉ: 'お',
+  ゃ: 'や', ゅ: 'ゆ', ょ: 'よ', ゎ: 'わ', ゕ: 'か', ゖ: 'け', っ: '',
+}
+
+/**
+ * 比較用に正規化: ひらがな化・長音「ー」除去・小さいかなの揺れ吸収・かな以外（空白/記号/漢字/英字）除去。
+ * ① 子どもの発音に寛容にするための下処理。
+ */
 export function normalizeReading(s: string): string {
-  return toHira(s).replace(/[^ぁ-ゖー]/g, '').replace(/ー/g, '')
+  return toHira(s)
+    .replace(/[^ぁ-ゖー]/g, '') // かな以外（空白・記号・漢字・英字）を除去
+    .replace(/ー/g, '') // 長音符を除去
+    .replace(/[ぁぃぅぇぉゃゅょゎゕゖっ]/g, c => SMALL_TO_LARGE[c] ?? c) // 小さいかなを大きいかなへ
 }
 
 /** レーベンシュタイン距離（1文字程度の言い間違いを許容するため） */

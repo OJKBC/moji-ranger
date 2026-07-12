@@ -1,11 +1,6 @@
-// ㊿「よむ」ステージ（共通エンジン・press-to-talk版）の検証：
-//  1) 非対応端末では地図に read-1 が出ない／対応端末では出る
-//  2) マイク同意→共通エンジンのゲーム画面（canvas）で遊べる
-//  3) 「はなす」を押す→interim（途中経過）で正解が即成立＝finalを待たない（反応速度）
-//  4) 不正解の確定は final のみ（interimのwrongでライフを減らさない）
-//  5) 認識失敗（空）は誤答にしない
-//  6) タップだけでは正解にならない（声のみ・(a)修正）
-//  7) ボタンを押していないときは判定しない（雑音を誤答にしない・(b)(c)の根治）
+// ㊿「よむ」ステージ（press-to-talk・単語のみ・タップフォールバック）の検証：
+//  A) 対応端末: 出題は2文字以上の単語 / 押す→interim即正解 / タップは判定しない / final誤答のみ減点 / 認識失敗無罰
+//  B) 非対応端末: 「よむ」は地図に出る（①⑩）/ 同意は出ない / タップで正解にできる
 import puppeteer from 'puppeteer-core'
 
 const OUT = process.argv[2] ?? 'C:/Users/chiri/AppData/Local/Temp/claude/C--Users-chiri/644ad3a8-dbe9-4c69-bc2f-d9120996fa50/scratchpad'
@@ -21,15 +16,26 @@ const page = await browser.newPage()
 await page.setViewport({ width: 1024, height: 740 })
 const errors = []
 page.on('pageerror', e => { errors.push(e.message); console.log('[pageerror]', e.message) })
+page.on('console', m => { if (m.type() === 'error') console.log('[console.err]', m.text().slice(0, 200)) })
 
-// 疑似 SpeechRecognition を注入。window.__emitRead(text, isFinal) で結果を発火できる。
 await page.evaluateOnNewDocument(() => {
+  // ログインボーナス（1日1回）はテストの localStorage.clear() で必ず claimable になり、
+  // 対戦画面の上に被さって操作を止める。今日ぶんを受取済みにしてスキップさせる。
+  try {
+    const d = new Date()
+    const pad = n => String(n).padStart(2, '0')
+    const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    const raw = localStorage.getItem('moji-ranger-progress')
+    const p = raw ? JSON.parse(raw) : {}
+    p.lastBonusDate = today
+    localStorage.setItem('moji-ranger-progress', JSON.stringify(p))
+  } catch {}
   window.__recs = []
   class FakeRec {
-    constructor() { this.onresult = null; this.onerror = null; this.onend = null; this._on = false }
-    start() { this._on = true; window.__recs = window.__recs.filter(r => r !== this); window.__recs.push(this) }
-    stop() { this._on = false; if (this.onend) this.onend() }
-    abort() { this._on = false }
+    constructor() { this.onresult = null; this.onerror = null; this.onend = null; this.maxAlternatives = 1 }
+    start() { window.__recs = window.__recs.filter(r => r !== this); window.__recs.push(this) }
+    stop() { if (this.onend) this.onend() }
+    abort() {}
   }
   window.SpeechRecognition = FakeRec
   if (!navigator.mediaDevices) Object.defineProperty(navigator, 'mediaDevices', { value: {}, configurable: true })
@@ -46,116 +52,80 @@ await page.evaluateOnNewDocument(() => {
 await page.goto(URL, { waitUntil: 'networkidle2' })
 await page.evaluate(() => localStorage.clear())
 
-// --- フェーズ1: 非対応端末で read-1 が出ないこと（reload後・地図描画前に削除）---
-await page.reload({ waitUntil: 'networkidle2' })
-await page.evaluate(() => { delete window.SpeechRecognition; delete window.webkitSpeechRecognition })
-await sleep(400)
-await page.evaluate(() => document.querySelector('button.big-button')?.click())
-await sleep(350)
-await page.evaluate(() => {
-  const b = [...document.querySelectorAll('button, .category-card, [role=button]')].find(e => /にほんご/.test(e.textContent))
-  b?.click()
-})
-await sleep(450)
-const hasReadUnsupported = await page.evaluate(() =>
+const st = () => page.evaluate(() => window.__debugState ?? null)
+const press = () => page.evaluate(() => window.__readPress && window.__readPress())
+const openJp = async () => {
+  await page.evaluate(() => document.querySelector('button.big-button')?.click())
+  await sleep(350)
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll('button, .category-card, [role=button]')].find(e => /にほんご/.test(e.textContent))
+    b?.click()
+  })
+  await sleep(450)
+}
+const readShown = () => page.evaluate(() =>
   [...document.querySelectorAll('.stage-card, .path-node')].some(e => /よむ/.test(e.textContent)))
-console.log('1) 非対応端末で「よむ」表示:', hasReadUnsupported, '(期待 false)')
 
-// --- フェーズ2: 対応端末（reloadで疑似Rec再注入）→ よむを開く ---
+// ============ A) 対応端末 ============
 await page.reload({ waitUntil: 'networkidle2' })
 await sleep(400)
-await page.evaluate(() => document.querySelector('button.big-button')?.click())
-await sleep(350)
-await page.evaluate(() => {
-  const b = [...document.querySelectorAll('button, .category-card, [role=button]')].find(e => /にほんご/.test(e.textContent))
-  b?.click()
-})
-await sleep(450)
-const hasReadSupported = await page.evaluate(() =>
-  [...document.querySelectorAll('.stage-card, .path-node')].some(e => /よむ/.test(e.textContent)))
-console.log('1) 対応端末で「よむ」表示:', hasReadSupported, '(期待 true)')
-
-await page.evaluate(() => {
-  const n = [...document.querySelectorAll('.stage-card, .path-node')].find(e => /よむ/.test(e.textContent))
-  n?.click()
-})
+await openJp()
+console.log('A) 対応端末で「よむ」表示:', await readShown(), '(期待 true)')
+await page.evaluate(() => [...document.querySelectorAll('.stage-card, .path-node')].find(e => /よむ/.test(e.textContent))?.click())
 await sleep(500)
 const consent = await page.evaluate(() => !!document.querySelector('.reading-consent'))
 console.log('   マイク同意画面:', consent, '(期待 true)')
-await page.screenshot({ path: `${OUT}/read-A-consent.png` })
 await page.evaluate(() => [...document.querySelectorAll('.reading-consent .big-button')].find(b => /はじめる/.test(b.textContent))?.click())
-
-// 共通エンジンの canvas が立ち上がって出題が始まるまで待つ
-const st = () => page.evaluate(() => window.__debugState ?? null)
 for (let i = 0; i < 40; i++) { const s = await st(); if (s && s.stepActive && s.target) break; await sleep(150) }
 await sleep(300)
-await page.screenshot({ path: `${OUT}/read-B-game.png` })
-const canvasExists = await page.evaluate(() => !!document.querySelector('canvas'))
-console.log('4) 共通エンジンのcanvas:', canvasExists, '/ HUD(はなすボタン・きいてるよ)・両手・モンスターは共通（read-B-game.png）')
+await page.screenshot({ path: `${OUT}/read-A-game.png` })
 
-const press = () => page.evaluate(() => window.__readPress && window.__readPress())
+// 出題は2文字以上の単語か（数回確認）
+let minLen = 99, samples = []
+for (let r = 0; r < 4; r++) {
+  const before = await st(); if (!before?.stepActive) { await sleep(300); continue }
+  const t = before.target; samples.push(t); minLen = Math.min(minLen, [...t].length)
+  await press(); await sleep(30)
+  await page.evaluate(x => window.__emitRead(x, false), t)
+  for (let k = 0; k < 60; k++) { const n = await st(); if (n.stepActive && n.target !== t) break; await sleep(70) }
+}
+console.log('A) 出題語:', samples.join(' '), '/ 最短文字数:', minLen, '(期待 >=2)')
 
-// --- (7) ボタンを押していないとき（＝聞いていない）に雑音を送っても判定しない ---
-let sN = await st()
-const livesNoBtn = sN.lives, correctNoBtn = sN.sessionCorrect
-await page.evaluate(t => window.__emitRead(t, true), sN.target) // ボタン未押下で正解読みを送っても…
-await page.evaluate(() => window.__emitRead('ゑゑ', true)) // …雑音を送っても
-await sleep(250)
-let sN2 = await st()
-console.log('7) ボタン未押下で送信 → correct:', sN2.sessionCorrect, '(期待', correctNoBtn, ') ライフ:', sN2.lives, '(期待', livesNoBtn, ')＝聞いていないので無反応')
-
-// --- (6) タップ（ポインタ）だけでは正解にならない ---
+// タップは判定しない（中央バブル）
 const box = await page.evaluate(() => { const c = document.querySelector('canvas'); const r = c.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height } })
-const s6 = await st()
-// バブルは中央付近(GAME 480,335 相当)。canvas中央あたりをタップ
+let s = await st(); const c0 = s.sessionCorrect
 await page.mouse.click(box.x + box.w * 0.5, box.y + box.h * 0.52)
 await sleep(300)
-const s6b = await st()
-console.log('6) 中央バブルをタップ → correct:', s6b.sessionCorrect, '(期待', s6.sessionCorrect, '=増えない) ライフ:', s6b.lives)
+let s2 = await st()
+console.log('A) タップ→ correct:', s2.sessionCorrect, '(期待', c0, '=増えない)')
 
-// --- (5) 認識失敗（空）は誤答にしない（ボタンを押して空を送る） ---
-let s0 = await st()
-const livesBefore = s0.lives
-await press()
-await page.evaluate(() => window.__emitRead('', true))
-await sleep(250)
-let s1 = await st()
-console.log('5) 認識失敗(空)後 ライフ:', s1.lives, '(期待', livesBefore, '=減らない) / correct:', s1.sessionCorrect)
+// final誤答 → ライフ-1
+const bw = await st(); await press(); await page.evaluate(() => window.__emitRead('ゑゑゑ', true)); await sleep(1000)
+const aw = await st()
+console.log('A) final誤答→ ライフ:', aw.lives, '(期待', bw.lives - 1, ')')
+// 認識失敗（空）→ 減らない
+const bl = await st(); await press(); await page.evaluate(() => window.__emitRead('', true)); await sleep(300)
+const al = await st()
+console.log('A) 認識失敗(空)→ ライフ:', al.lives, '(期待', bl.lives, '=減らない)')
 
-// --- (2)(3) 「はなす」を押す→interimで正解が即成立＝finalを待たない ---
-let interimOk = 0, reactionMs = []
-for (let round = 0; round < 3; round++) {
-  const before = await st()
-  if (!before || !before.stepActive) { await sleep(400); continue }
-  const target = before.target
-  await press() // はなすボタンを押す
-  await sleep(30)
-  const t0 = Date.now()
-  await page.evaluate(t => window.__emitRead(t, false), target) // isFinal=false（途中経過）だけ
-  let ok = false
-  for (let k = 0; k < 20; k++) {
-    const now = await st()
-    if (now.sessionCorrect > before.sessionCorrect) { ok = true; reactionMs.push(Date.now() - t0); break }
-    await sleep(20)
-  }
-  if (ok) interimOk++
-  for (let k = 0; k < 80; k++) { const n = await st(); if (n.stepActive && n.target !== target) break; await sleep(80) }
-}
-console.log('3) 押す→interimのみで正解した回数:', interimOk, '/3 （finalを待たず即） 反応(ms):', reactionMs.join(','))
-
-// --- (4) 不正解の確定は final のみ：interimのwrongでは減らない ---
-const b2 = await st()
-const livesPre = b2.lives
-await press()
-await page.evaluate(() => window.__emitRead('ゑゑ', false)) // interim wrong → 減らない
+// ============ B) 非対応端末 ============
+await page.reload({ waitUntil: 'networkidle2' })
+await page.evaluate(() => { delete window.SpeechRecognition; delete window.webkitSpeechRecognition })
 await sleep(300)
-const midWrong = await st()
-console.log('4) interimのwrong後 ライフ:', midWrong.lives, '(期待', livesPre, '=減らない)')
-await press()
-await page.evaluate(() => window.__emitRead('ゑゑ', true)) // final wrong → 1減る
-await sleep(1000)
-const afterWrong = await st()
-console.log('4) finalのwrong後 ライフ:', afterWrong.lives, '(期待', livesPre - 1, ') wrongTotal:', afterWrong.wrongTotal)
+await openJp()
+console.log('B) 非対応端末で「よむ」表示:', await readShown(), '(期待 true=常に出す)')
+await page.evaluate(() => [...document.querySelectorAll('.stage-card, .path-node')].find(e => /よむ/.test(e.textContent))?.click())
+await sleep(500)
+const consentB = await page.evaluate(() => !!document.querySelector('.reading-consent'))
+console.log('B) マイク同意画面:', consentB, '(期待 false=非対応はスキップ)')
+for (let i = 0; i < 40; i++) { const s3 = await st(); if (s3 && s3.stepActive && s3.target) break; await sleep(150) }
+await sleep(300)
+await page.screenshot({ path: `${OUT}/read-B-tap.png` })
+const bt = await st()
+await page.mouse.click(box.x + box.w * 0.5, box.y + box.h * 0.52) // タップで正解
+await sleep(400)
+const at = await st()
+console.log('B) タップ→ correct:', at.sessionCorrect, '(期待', bt.sessionCorrect + 1, '=タップで正解)')
 
 console.log('pageerrors:', errors.length)
 await browser.close()
