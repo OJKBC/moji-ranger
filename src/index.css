@@ -756,14 +756,21 @@ body {
 .category-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  /* 行はカードの中身の高さに合わせる（画面が短い端末で行が潰れてラベルが
+     枠の下に隠れる不具合の対策。以前は空き高さを3等分して各カードが縮み、
+     overflow:hidden でラベル・★が切れていた）。 */
+  grid-auto-rows: max-content;
   gap: 20px;
   overflow-y: auto;
   min-height: 0;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
   padding: 12px 4px 14px;
-  align-content: center;
+  /* 余白があるときは中央、入り切らないときは上寄せでスクロール（safe） */
+  align-content: safe center;
 }
+/* カードは中身の高さのまま（行トラックに引き伸ばされて縮まないように） */
+.category-card { align-self: start; }
 
 .category-card {
   font-family: inherit;
