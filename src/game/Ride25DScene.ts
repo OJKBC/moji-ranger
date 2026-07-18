@@ -365,6 +365,13 @@ export class Ride25DScene extends Phaser.Scene {
         }
         return out
       }
+      // ラベルを指定して、そのバブルを撃ったことにする（自動テスト用・座標に依存しない）
+      w.__shootLabel = (label: string): boolean => {
+        const b = this.bubbles.find(x => x.alive && x.label === label)
+        if (!b) return false
+        this.shoot(b.container.x, b.container.y)
+        return true
+      }
     }
     // battle 未定義の 2.5d ステージにも安全なデフォルトを与える
     const base = this.stageData.battle ?? {
@@ -2344,8 +2351,17 @@ export class Ride25DScene extends Phaser.Scene {
     // ① もう一度読み上げ（答えは映さず、音だけ）
     this.speakPrompt()
     this.tweens.add({ targets: this.missionBar, scale: 1.08, duration: 180, yoyo: true, repeat: 1 })
-    // ② ダミーを1つ減らす（正解＋ダミー1つは必ず残す）
-    const wrongs = this.bubbles.filter(b => b.alive && b.label !== this.currentTarget)
+    // ② ダミーを1つ減らす（正解は必ず残す）。
+    //    sequence（もじもじアトラクション）では単語の全文字が最初から一度に並んでいる。
+    //    いま撃つ文字は currentTarget だが、これから撃つ文字（例:「あり」の「り」）も“正解の一部”で、
+    //    currentTarget とは一致しない。currentTarget だけを守ると、この先の正解文字がダミー扱いで
+    //    消えてしまう（＝「り」が消えるバグ）。モードを問わず「正解になりうる文字」を保護対象にする。
+    //    ※ ダミーは単語の全文字を除外して選んでいる（startSequenceStep の exclude:seq）ので、
+    //      currentSeq に含まれる＝必ず正解文字。ダミーを誤って守ることはない。
+    const protectedLabels = this.stageData.mode === 'sequence'
+      ? new Set(this.currentSeq)
+      : new Set([this.currentTarget])
+    const wrongs = this.bubbles.filter(b => b.alive && !protectedLabels.has(b.label))
     if (wrongs.length <= 1) return
     const victim = wrongs[Phaser.Math.Between(0, wrongs.length - 1)]
     victim.alive = false
@@ -2773,6 +2789,8 @@ export class Ride25DScene extends Phaser.Scene {
         sessionCorrect: this.sessionCorrect,
         stepActive: this.stepActive,
         hasQuestionIcon: !!this.questionIcon,
+        word: this.currentWord,      // sequence: 出題中の単語（テスト検証用）
+        seq: [...this.currentSeq],   // sequence: 単語の全文字（正解になりうる文字）
       }
       w.__debugTargets = this.bubbles
         .filter(b => b.alive)
