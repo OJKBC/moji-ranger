@@ -1,5 +1,5 @@
 import type { Hero, Stage, StageCategory } from '../types'
-import { HIRAGANA_POOL, KATAKANA_POOL, HIRAGANA_SEION } from './kana'
+import { HIRAGANA_POOL, KATAKANA_POOL } from './kana'
 
 /**
  * ステージデータ集約ファイル。
@@ -112,35 +112,9 @@ export const STAGES: Stage[] = [
     reward: 1,
     difficulty: 2,
   },
-  {
-    id: 'read-1',
-    title: 'よむバトル',
-    type: 'hiragana',
-    mode: 'read', // ㊿ 音声認識で「声に出して読む」ステージ（にほんご）
-    category: 'jp',
-    renderer: '2.5d',
-    recommendedAgeMin: 4,
-    recommendedAgeMax: 6,
-    missionText: 'もじを こえに だして よもう！',
-    voicePrompts: [],
-    correctKind: 'hiragana',
-    correctAnswer: 'あ',
-    distractors: [],
-    battle: {
-      enemyCount: 4,
-      purifyStepsPerEnemy: 1,
-      bossPurifySteps: 1,
-      choiceCount: 1,
-      rideDistance: 50,
-      // 難易度で読む文字数が増える（1〜2=1文字, 3=2文字, 4=3文字…）。プールは清音46。
-      letterPool: HIRAGANA_SEION,
-      poolStart: 12,
-    },
-    rounds: 5,
-    targetsPerRound: 4,
-    reward: 1,
-    difficulty: 1,
-  },
+  // 「よむバトル」(read-1) は音声認識が幼児には難しいため削除（2026-07-20・ユーザー指示）。
+  // mode:'read' のエンジン側コード（Ride25DScene）と App のマイク同意画面は休眠のまま残置
+  //（読むステージが無ければ一切動かない＝無害）。将来復活させる場合はここに read ステージを戻すだけ。
   {
     id: 'number-3',
     title: '「3」をさがせ！',
