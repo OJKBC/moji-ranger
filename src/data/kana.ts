@@ -9,9 +9,13 @@
  * 文字を増やしたいときは、この配列に足すだけで上記すべてに反映される（＝全カバーを保ちやすい）。
  *
  * 難易度による開放（＝そのプレイで出うる字）の設計:
- *   清音46 → 難易度3で全部 / 濁音・半濁音 → 難易度4 / 小さい文字・長音 → 難易度5。
+ *   清音46 → 難易度3で全部 / 濁音・半濁音 → 難易度4以降。
  *   実際の開放数は data/difficulty.ts の poolBonus と picker が決める（順序が重要なので
- *   「清音 → 濁音 → 半濁音 → 小さい文字」の順に並べる）。
+ *   「清音 → 濁音 → 半濁音」の順に並べる）。
+ *
+ * ※「小さい文字（ぁぃぅぇぉ・ゃゅょっ・長音ー）」は、単独で出題しても学習効果が薄い
+ *   （「ちいさいあ」等）ため、こうえんの出題プールには含めない（2026-07-20・ユーザー指示）。
+ *   ことば（words.ts）の中では拗音・促音として引き続き使われるので、定義自体は残す。
  */
 
 // ============================ ひらがな
@@ -52,12 +56,13 @@ export const KATAKANA_HANDAKUTEN = ['パ', 'ピ', 'プ', 'ペ', 'ポ']
 /** 小さい文字＋長音10（拗音のもと・促音・小さい母音・のばす音「ー」） */
 export const KATAKANA_SMALL = ['ャ', 'ュ', 'ョ', 'ッ', 'ァ', 'ィ', 'ゥ', 'ェ', 'ォ', 'ー']
 
-// ============================ 出題プール（清音→濁音→半濁音→小さい文字 の順）
+// ============================ 出題プール（清音→濁音→半濁音 の順）
+// 小さい文字（HIRAGANA_SMALL / KATAKANA_SMALL）は単独学習に向かないので出題プールから除外。
 export const HIRAGANA_POOL = [
-  ...HIRAGANA_SEION, ...HIRAGANA_DAKUTEN, ...HIRAGANA_HANDAKUTEN, ...HIRAGANA_SMALL,
+  ...HIRAGANA_SEION, ...HIRAGANA_DAKUTEN, ...HIRAGANA_HANDAKUTEN,
 ]
 export const KATAKANA_POOL = [
-  ...KATAKANA_SEION, ...KATAKANA_DAKUTEN, ...KATAKANA_HANDAKUTEN, ...KATAKANA_SMALL,
+  ...KATAKANA_SEION, ...KATAKANA_DAKUTEN, ...KATAKANA_HANDAKUTEN,
 ]
 
 /**

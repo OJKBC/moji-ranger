@@ -2777,6 +2777,7 @@ export class Ride25DScene extends Phaser.Scene {
       const w = window as unknown as Record<string, unknown>
       w.__debugState = {
         phase: this.phase,
+        level: this.level,          // 開始難易度（さいしょから/つづきから の検証用）
         pending: this.pending,
         enemyIndex: this.enemyIndex,
         boss: this.bossActive,

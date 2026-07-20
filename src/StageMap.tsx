@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { stagesInCategory, CATEGORY_META } from './data/stages'
-import { clearedLevelOf, isStageUnlocked, loadProgress } from './store/progress'
+import { clearedLevelOf, isStageUnlocked, loadProgress, nextLevelOf } from './store/progress'
 import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
 import { MAX_DIFFICULTY } from './types'
@@ -45,6 +46,8 @@ export function StageMap({ category, onSelect, onBack, onZukan, reviewStage }: P
   const currentIndex = stages.findIndex(
     s => isStageUnlocked(s, progress) && clearedLevelOf(progress, s.id) === 0,
   )
+  // 難易度えらび（一度でもクリア済みのステージだけ「さいしょから／つづきから」を聞く）
+  const [chooser, setChooser] = useState<{ stage: Stage; cont: DifficultyLevel } | null>(null)
 
   const handleSelect = (stage: Stage, unlocked: boolean) => {
     if (!unlocked) {
@@ -53,7 +56,15 @@ export function StageMap({ category, onSelect, onBack, onZukan, reviewStage }: P
       return
     }
     sfx.uiTap()
-    // どのステージも必ず難易度1から始める（クリアでレベル2→3…へ進行）。
+    // つづき（次の挑戦難易度）が1より上＝一度クリアしている → どこから始めるか選ばせる。
+    // 前回の高い難易度に強制されず、いつでも「さいしょから（レベル1）」に戻れるようにする。
+    const cont = nextLevelOf(progress, stage.id)
+    if (cont > 1) {
+      voice.speak('さいしょから？ つづきから？')
+      setChooser({ stage, cont })
+      return
+    }
+    // まだクリアしていないステージは、そのまま難易度1で始める。
     onSelect(stage, 1)
   }
 
@@ -131,6 +142,25 @@ export function StageMap({ category, onSelect, onBack, onZukan, reviewStage }: P
         {/* ゴール地点（お城＝街が助かる） */}
         <div className="path-goal">🏰 ゴール</div>
       </div>
+
+      {/* 難易度えらび: 前回の続き（高い難易度）に強制されず、最初から/つづきから 選べる */}
+      {chooser && (
+        <div className="confirm-overlay" onClick={() => { sfx.uiTap(); setChooser(null) }}>
+          <div className="confirm-box level-choose" onClick={e => e.stopPropagation()}>
+            <p className="confirm-text">{chooser.stage.title}</p>
+            <p className="level-choose-sub">どこから はじめる？</p>
+            <button className="big-button" onClick={() => { sfx.uiTap(); onSelect(chooser.stage, 1) }}>
+              ▶ さいしょから（レベル1）
+            </button>
+            <button className="big-button" onClick={() => { sfx.uiTap(); onSelect(chooser.stage, chooser.cont) }}>
+              ⏩ つづきから（レベル{chooser.cont}）
+            </button>
+            <button className="sub-button" onClick={() => { sfx.uiTap(); setChooser(null) }}>
+              🗺️ もどる
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

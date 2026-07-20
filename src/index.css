@@ -441,6 +441,17 @@ body {
   color: #3a3a70;
 }
 
+/* 難易度えらび（さいしょから / つづきから） */
+.level-choose-sub {
+  margin-top: -4px;
+  font-size: clamp(16px, 4.2vw, 20px);
+  font-weight: bold;
+  color: #6a5aa0;
+}
+.level-choose .big-button {
+  width: 100%;
+}
+
 /* ---- ステージカードの難易度進捗バッジ ---- */
 
 .stage-levels {
