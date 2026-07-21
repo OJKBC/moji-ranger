@@ -53,7 +53,7 @@ export function CountryIntro({ code, onDone }: Props) {
   }, [code])
 
   return (
-    <div className="overlay-screen country-intro" onClick={finish}>
+    <div className="country-intro" onClick={finish}>
       <div className="country-intro-card" onClick={e => e.stopPropagation()}>
         <div className="country-intro-head">
           <img className="country-intro-flag" src={flagUrl(code)} alt="" />
