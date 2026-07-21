@@ -918,13 +918,13 @@ export class Ride25DScene extends Phaser.Scene {
   private startCountryStep(): void {
     this.currentKind = 'country'
     const pool = this.battle.letterPool
-    // 開放数（難易度で増える）: poolStart + poolBonus、プール長で頭打ち（L1=6/L2=12/L3以降=全部）
+    // 開放数（難易度で増える）: poolStart + poolBonus、プール長で頭打ち（L1=8/L2=14/L3以降=全部）
     const openCount = Math.min(pool.length, this.battle.poolStart + this.tune.poolBonus)
     const available = pool.slice(0, Math.max(this.battle.choiceCount, openCount))
-    // 出題国: ボスは練習した国を優先、ザコはデッキ方式（全部出し切るまで繰り返さない）
-    const target = this.bossActive && this.practiced.length
-      ? this.practiced[Phaser.Math.Between(0, this.practiced.length - 1)]
-      : this.deckFor(`country-${available.length}`, [...available]).next(() => Math.random())
+    // 出題国はデッキ方式（シャッフルして全部配り切るまで繰り返さない）。
+    // ザコもボスも同じデッキ（同キー）から引くので、1プレイ内で同じ国が続けて被らない
+    // ＝ ボスがザコで出た国をもう一度聞く、という被りを避ける（かなと違い復習より網羅を優先）。
+    const target = this.deckFor(`country-${available.length}`, [...available]).next(() => Math.random())
     this.currentTarget = target
     this.recentTargets.push(target)
 

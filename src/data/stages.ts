@@ -331,9 +331,10 @@ export const STAGES: Stage[] = [
       choiceCount: 3, // 難易度で自動増（data/difficulty.ts の choiceBonus）
       rideDistance: 50,
       // 出題プールは国コード（習わせたい順＝distinct な国旗から）。src/data/countries.ts に集約。
-      // 難易度で開放数が増える（poolStart＋poolBonus）: L1=6/ L2=12 / L3以降=全14（似た国旗も）。
+      // 難易度で開放数が増える（poolStart＋poolBonus）: L1=8 / L2=14 / L3以降=全14（似た国旗も）。
+      // L1 を 8 にして、1プレイ（ザコ3＋ボス3＝6問）でも同じ国が被りにくいようにする。
       letterPool: COUNTRY_ORDER,
-      poolStart: 6,
+      poolStart: 8,
     },
     rounds: 6,
     targetsPerRound: 3,
