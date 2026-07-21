@@ -44,13 +44,13 @@ export const COUNTRIES: Country[] = [
   ] },
   { code: 'fr', name: 'フランス', characteristics: [
     'ヨーロッパに ある くにだよ',
-    'パンや ケーキが とても おいしい',
-    'サッカーが つよいよ',
+    'パンや ケーキが ゆうめい',
+    'サッカーが さかんな くに',
   ] },
   { code: 'br', name: 'ブラジル', characteristics: [
     'みなみアメリカの おおきな くに',
-    'サッカーが せかいで いちばん つよい',
-    'げんきな おまつりが ゆうめい',
+    'サッカーが さかんな くに',
+    'カーニバルという おまつりが ゆうめい',
   ] },
   { code: 'ca', name: 'カナダ', characteristics: [
     'きたアメリカの ひろい くに',
@@ -65,7 +65,7 @@ export const COUNTRIES: Country[] = [
   { code: 'cn', name: 'ちゅうごく', characteristics: [
     'アジアの おおきな くに',
     'パンダが すんでいるよ',
-    'ひとが せかいで いちばん おおい',
+    'たくさんの ひとが すむ くに',
   ] },
   { code: 'de', name: 'ドイツ', characteristics: [
     'ヨーロッパに ある くに',
@@ -85,7 +85,7 @@ export const COUNTRIES: Country[] = [
   { code: 'au', name: 'オーストラリア', characteristics: [
     'みなみの ほうに ある おおきな しま',
     'コアラや カンガルーが いるよ',
-    'うみが とても きれい',
+    'サンゴの うみが ひろがる',
   ] },
   { code: 'eg', name: 'エジプト', characteristics: [
     'アフリカに ある くに',
@@ -95,7 +95,7 @@ export const COUNTRIES: Country[] = [
   { code: 'nl', name: 'オランダ', characteristics: [
     'ヨーロッパに ある くに',
     'かざぐるまが ゆうめい',
-    'チューリップの おはなが きれい',
+    'チューリップの おはなが ゆうめい',
   ] },
   { code: 'ru', name: 'ロシア', characteristics: [
     'せかいで いちばん ひろい くに',
@@ -109,7 +109,7 @@ export const COUNTRIES: Country[] = [
   ] },
   { code: 'es', name: 'スペイン', characteristics: [
     'ヨーロッパに ある くに',
-    'サッカーが つよいよ',
+    'サッカーが さかんな くに',
     'あかと きいろの はた',
   ] },
   { code: 'mx', name: 'メキシコ', characteristics: [
@@ -120,7 +120,7 @@ export const COUNTRIES: Country[] = [
   { code: 'th', name: 'タイ', characteristics: [
     'アジアに ある くに',
     'ゾウが たくさん いるよ',
-    'あたたかくて フルーツが おいしい',
+    'あたたかくて フルーツが たくさん とれる',
   ] },
   { code: 'ch', name: 'スイス', characteristics: [
     'ヨーロッパの まんなかの くに',
@@ -179,7 +179,7 @@ export const COUNTRIES: Country[] = [
   ] },
   { code: 'id', name: 'インドネシア', characteristics: [
     'アジアの みなみに ある しまの くに',
-    'あたたかくて うみが きれい',
+    'あたたかくて うみに かこまれている',
     'あかと しろの はた',
   ] },
   { code: 'vn', name: 'ベトナム', characteristics: [
@@ -189,7 +189,7 @@ export const COUNTRIES: Country[] = [
   ] },
   { code: 'ph', name: 'フィリピン', characteristics: [
     'アジアの しまの くに',
-    'あたたかくて うみが きれい',
+    'あたたかくて うみに かこまれている',
     'たくさんの しまが ある',
   ] },
   { code: 'my', name: 'マレーシア', characteristics: [
@@ -199,12 +199,12 @@ export const COUNTRIES: Country[] = [
   ] },
   { code: 'sg', name: 'シンガポール', characteristics: [
     'アジアの ちいさな しまの くに',
-    'きれいな まちの くに',
+    'ビルが たくさん ならぶ まち',
     'マーライオンが ゆうめい',
   ] },
   { code: 'ar', name: 'アルゼンチン', characteristics: [
     'みなみアメリカの くに',
-    'サッカーが とても つよい',
+    'サッカーが さかんな くに',
     'タンゴという ダンスが ゆうめい',
   ] },
   { code: 'pe', name: 'ペルー', characteristics: [
