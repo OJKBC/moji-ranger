@@ -102,6 +102,136 @@ export const COUNTRIES: Country[] = [
     'ふゆは ゆきで とても さむい',
     'マトリョーシカという にんぎょうが ゆうめい',
   ] },
+  { code: 'in', name: 'インド', characteristics: [
+    'アジアに ある おおきな くに',
+    'カレーが うまれた くに',
+    'ゾウが すんでいるよ',
+  ] },
+  { code: 'es', name: 'スペイン', characteristics: [
+    'ヨーロッパに ある くに',
+    'サッカーが つよいよ',
+    'あかと きいろの はた',
+  ] },
+  { code: 'mx', name: 'メキシコ', characteristics: [
+    'きたアメリカの みなみに ある くに',
+    'タコスという たべものが ゆうめい',
+    'サボテンが たくさん',
+  ] },
+  { code: 'th', name: 'タイ', characteristics: [
+    'アジアに ある くに',
+    'ゾウが たくさん いるよ',
+    'あたたかくて フルーツが おいしい',
+  ] },
+  { code: 'ch', name: 'スイス', characteristics: [
+    'ヨーロッパの まんなかの くに',
+    'アルプスという たかい やまが ある',
+    'チョコレートが ゆうめい',
+  ] },
+  { code: 'tr', name: 'トルコ', characteristics: [
+    'アジアと ヨーロッパの あいだの くに',
+    'あかい はたに つきと ほし',
+    'あまい おかしが ゆうめい',
+  ] },
+  { code: 'gr', name: 'ギリシャ', characteristics: [
+    'ヨーロッパに ある くに',
+    'あおと しろの はた',
+    'むかしの おはなし(しんわ)が ゆうめい',
+  ] },
+  { code: 'se', name: 'スウェーデン', characteristics: [
+    'ヨーロッパの きたの くに',
+    'あおい はたに きいろい じゅうじ',
+    'もりと みずうみが おおい',
+  ] },
+  { code: 'no', name: 'ノルウェー', characteristics: [
+    'ヨーロッパの きたの くに',
+    'よぞらに オーロラが みえるよ',
+    'うみの ちかくに たかい がけが ある',
+  ] },
+  { code: 'fi', name: 'フィンランド', characteristics: [
+    'ヨーロッパの きたの くに',
+    'サンタさんの ふるさとと いわれる',
+    'ゆきが たくさん ふる',
+  ] },
+  { code: 'pt', name: 'ポルトガル', characteristics: [
+    'ヨーロッパの にしの くに',
+    'うみの ちかくの くに',
+    'あまい エッグタルトが ゆうめい',
+  ] },
+  { code: 'ie', name: 'アイルランド', characteristics: [
+    'ヨーロッパの しまぐに',
+    'みどりが いっぱいの くに',
+    'みどり・しろ・オレンジの はた',
+  ] },
+  { code: 'at', name: 'オーストリア', characteristics: [
+    'ヨーロッパの まんなかの くに',
+    'おんがくが さかんな くに',
+    'あか・しろ・あかの はた',
+  ] },
+  { code: 'pl', name: 'ポーランド', characteristics: [
+    'ヨーロッパに ある くに',
+    'しろと あかの はた',
+    'むかしの おしろが おおい',
+  ] },
+  { code: 'is', name: 'アイスランド', characteristics: [
+    'きたの うみに ある しまぐに',
+    'おんせんが たくさん',
+    'かざんと こおりの くに',
+  ] },
+  { code: 'id', name: 'インドネシア', characteristics: [
+    'アジアの みなみに ある しまの くに',
+    'あたたかくて うみが きれい',
+    'あかと しろの はた',
+  ] },
+  { code: 'vn', name: 'ベトナム', characteristics: [
+    'アジアに ある くに',
+    'フォーという めんが ゆうめい',
+    'あかい はたに きいろい ほし',
+  ] },
+  { code: 'ph', name: 'フィリピン', characteristics: [
+    'アジアの しまの くに',
+    'あたたかくて うみが きれい',
+    'たくさんの しまが ある',
+  ] },
+  { code: 'my', name: 'マレーシア', characteristics: [
+    'アジアに ある くに',
+    'あたたかい くに',
+    'たかい ツインタワーが ゆうめい',
+  ] },
+  { code: 'sg', name: 'シンガポール', characteristics: [
+    'アジアの ちいさな しまの くに',
+    'きれいな まちの くに',
+    'マーライオンが ゆうめい',
+  ] },
+  { code: 'ar', name: 'アルゼンチン', characteristics: [
+    'みなみアメリカの くに',
+    'サッカーが とても つよい',
+    'タンゴという ダンスが ゆうめい',
+  ] },
+  { code: 'pe', name: 'ペルー', characteristics: [
+    'みなみアメリカの くに',
+    'たかい やまに むかしの いせきが ある',
+    'アルパカが すんでいる',
+  ] },
+  { code: 'za', name: 'みなみアフリカ', characteristics: [
+    'アフリカの いちばん みなみの くに',
+    'ライオンや ゾウが すんでいる',
+    'カラフルな はた',
+  ] },
+  { code: 'ke', name: 'ケニア', characteristics: [
+    'アフリカに ある くに',
+    'サバンナに どうぶつが いっぱい',
+    'はしるのが はやい せんしゅが おおい',
+  ] },
+  { code: 'ma', name: 'モロッコ', characteristics: [
+    'アフリカの きたの くに',
+    'ひろい さばくが ある',
+    'あかい はたに みどりの ほし',
+  ] },
+  { code: 'nz', name: 'ニュージーランド', characteristics: [
+    'みなみの うみに ある しまぐに',
+    'ひつじが たくさん いるよ',
+    'キウイという とりが すんでいる',
+  ] },
 ]
 
 /** 出題プール（習わせたい順のコード列）。stages.ts の battle.letterPool に使う */
@@ -113,8 +243,10 @@ export const COUNTRY_ORDER: string[] = COUNTRIES.map(c => c.code)
  * 増やすときはコードの組をここに足す。
  */
 export const SIMILAR_FLAG_GROUPS: string[][] = [
-  ['fr', 'it'],
-  ['nl', 'ru'],
+  ['fr', 'it', 'ie'], // たて3色（青白赤・緑白赤・緑白橙）
+  ['nl', 'ru'],       // よこ 赤白青系
+  ['se', 'no', 'fi', 'is'], // 北欧の十字
+  ['id', 'pl'],       // 赤白 / 白赤（上下が逆）
 ]
 
 const BY_CODE: Record<string, Country> = Object.fromEntries(COUNTRIES.map(c => [c.code, c]))
