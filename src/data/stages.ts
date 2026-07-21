@@ -1,5 +1,6 @@
 import type { Hero, Stage, StageCategory } from '../types'
 import { HIRAGANA_POOL, KATAKANA_POOL } from './kana'
+import { COUNTRY_ORDER } from './countries'
 
 /**
  * ステージデータ集約ファイル。
@@ -309,6 +310,36 @@ export const STAGES: Stage[] = [
     reward: 1,
     difficulty: 1,
   },
+  // ---- くにステージ（国旗あて＋世界地図＋国の特徴）----
+  {
+    id: 'country-flag',
+    title: 'こっきクイズ',
+    type: 'country',
+    mode: 'find', // 共通エンジン（find）。選択肢は文字ではなく国旗の画像バブル
+    category: 'world',
+    renderer: '2.5d',
+    recommendedAgeMin: 4,
+    recommendedAgeMax: 6,
+    missionText: 'きこえた くにの はたを ねらおう！',
+    voicePrompts: [],
+    correctKind: 'country',
+    distractors: [],
+    battle: {
+      enemyCount: 3,
+      purifyStepsPerEnemy: 1,
+      bossPurifySteps: 3,
+      choiceCount: 3, // 難易度で自動増（data/difficulty.ts の choiceBonus）
+      rideDistance: 50,
+      // 出題プールは国コード（習わせたい順＝distinct な国旗から）。src/data/countries.ts に集約。
+      // 難易度で開放数が増える（poolStart＋poolBonus）: L1=6/ L2=12 / L3以降=全14（似た国旗も）。
+      letterPool: COUNTRY_ORDER,
+      poolStart: 6,
+    },
+    rounds: 6,
+    targetsPerRound: 3,
+    reward: 1,
+    difficulty: 1,
+  },
 ]
 
 /**
@@ -353,18 +384,20 @@ export function makeReviewStage(letters: string[]): Stage {
 export function categoryOf(stage: Stage): StageCategory {
   if (stage.category) return stage.category
   if (stage.type === 'english') return 'en'
+  if (stage.type === 'country') return 'world'
   if (stage.type === 'math' || stage.type === 'number') return 'math'
   return 'jp' // hiragana / katakana（もじもじ含む）
 }
 
 /** カテゴリの並び順 */
-export const CATEGORY_ORDER: StageCategory[] = ['jp', 'en', 'math']
+export const CATEGORY_ORDER: StageCategory[] = ['jp', 'en', 'math', 'world']
 
 /** ㊺ カテゴリの見た目・読み上げ（読めない子にも絵＋色＋音で伝わるように） */
 export const CATEGORY_META: Record<StageCategory, { label: string; icon: string; color: string; voice: string }> = {
   jp: { label: 'にほんご', icon: 'あ', color: '#ff7aa2', voice: 'にほんご' },
   en: { label: 'えいご', icon: 'A', color: '#4db2ff', voice: 'えいご' },
   math: { label: 'さんすう', icon: '123', color: '#4ccb5a', voice: 'さんすう' },
+  world: { label: 'くに', icon: '🌏', color: '#f5a623', voice: 'くに' },
 }
 
 /** そのカテゴリに属する（非表示でない）ステージ一覧 */

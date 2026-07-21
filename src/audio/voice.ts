@@ -15,6 +15,7 @@ import { sfx } from './sfx'
 import { VOICE_CLIPS } from './voiceManifest'
 import { EN_VOICE_CLIPS } from './voiceManifestEn'
 import { EN_ABC_CLIPS } from './voiceManifestAbc'
+import { COUNTRY_VOICE_CLIPS } from './voiceManifestCountry'
 import { readingFor } from '../data/reading'
 
 class VoicePlayer {
@@ -48,7 +49,7 @@ class VoicePlayer {
   private warm(): void {
     if (this.warmed) return
     this.warmed = true
-    const all = [...Object.values(VOICE_CLIPS), ...Object.values(EN_VOICE_CLIPS), ...Object.values(EN_ABC_CLIPS)]
+    const all = [...Object.values(VOICE_CLIPS), ...Object.values(EN_VOICE_CLIPS), ...Object.values(EN_ABC_CLIPS), ...Object.values(COUNTRY_VOICE_CLIPS)]
     for (const file of all) {
       void fetch(`${import.meta.env.BASE_URL}assets/voice/${file}`).catch(() => undefined)
     }
@@ -174,6 +175,24 @@ class VoicePlayer {
       return this.speakTts(`${letter} for ${example}`, { lang: 'en-US', rate: 0.6, pitch: 1.05 })
     }
     return false
+  }
+
+  /**
+   * くに（国旗クイズ）用の読み上げ。国名・特徴・出題文は文全体で1クリップを事前生成しているので、
+   * テキスト全体をキーにそのクリップを再生する（自然な ja-JP-Nanami の声）。
+   * クリップが無ければ voice.speak（トークン分割→クリップ/TTS）にフォールバックする。
+   * @returns 音を出せたか
+   */
+  speakCountry(text: string): boolean {
+    if (!this.enabled) return false
+    const key = text.trim()
+    const graph = sfx.getGraph()
+    const file = COUNTRY_VOICE_CLIPS[key]
+    if (graph && file) {
+      void this.playClips(graph.ctx, graph.out, [file])
+      return true
+    }
+    return this.speak(text)
   }
 
   private async playClips(ctx: AudioContext, out: AudioNode, files: string[]): Promise<void> {

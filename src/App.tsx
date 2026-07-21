@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { EventBus } from './EventBus'
 import { PhaserGame } from './game/PhaserGame'
 import { STAGES, categoryOf, makeReviewStage } from './data/stages'
@@ -7,6 +7,9 @@ import { isSpeechSupported } from './speech'
 import { CategoryScreen } from './CategoryScreen'
 import { LoginBonus } from './LoginBonus'
 import { Zukan } from './Zukan'
+import { WorldZukan } from './WorldZukan'
+// くにの世界地図（@svg-maps/world）は大きいので、くにステージを遊ぶときだけ遅延読み込みする
+const CountryIntro = lazy(() => import('./CountryIntro').then(m => ({ default: m.CountryIntro })))
 import { REVIEW_MIN_WEAK, canClaimBonus, isStageUnlocked, loadProgress, weakKanaForReview } from './store/progress'
 import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
@@ -17,7 +20,7 @@ import bgUrl from './assets/bg.jpg'
 /** タイトル画面に出す登場モンスター（public/assets/monsters/ から） */
 const monsterUrl = (file: string) => `${import.meta.env.BASE_URL}assets/monsters/${file}`
 
-type Screen = 'title' | 'category' | 'map' | 'game' | 'mic-consent' | 'result' | 'failed' | 'zukan'
+type Screen = 'title' | 'category' | 'map' | 'game' | 'mic-consent' | 'result' | 'failed' | 'zukan' | 'world-zukan'
 
 /** ㊿「よむ」ステージ初回に一度だけ表示する保護者向けマイク同意（記録すれば次回以降は省略） */
 const MIC_CONSENT_KEY = 'moji-ranger-mic-consent'
@@ -66,6 +69,8 @@ export default function App() {
   const [category, setCategory] = useState<StageCategory>('jp')
   /** ㊷ ログインボーナス表示中か（1日1回・その日はじめて開いたとき） */
   const [bonusOpen, setBonusOpen] = useState(false)
+  /** くに: 正解後の「世界地図＋特徴」オーバーレイに出す国コード（null=非表示） */
+  const [countryIntro, setCountryIntro] = useState<string | null>(null)
 
   const openZukan = useCallback((from: Screen) => {
     sfx.uiTap()
@@ -93,14 +98,18 @@ export default function App() {
       setScreen('failed')
     }
     const onCaptured = () => setCapturedThisRun(true)
+    // くに: 国旗を正解 → 世界地図＋特徴オーバーレイを開く（閉じるとゲーム側の続きが進む）
+    const onCountryIntro = (p: { code: string }) => setCountryIntro(p.code)
     EventBus.on('stage-clear', onClear)
     EventBus.on('stage-failed', onFailed)
     EventBus.on('monster-captured', onCaptured)
+    EventBus.on('country-intro', onCountryIntro)
     return () => {
       document.removeEventListener('pointerdown', unlockAudio)
       EventBus.off('stage-clear', onClear)
       EventBus.off('stage-failed', onFailed)
       EventBus.off('monster-captured', onCaptured)
+      EventBus.off('country-intro', onCountryIntro)
     }
   }, [])
 
@@ -214,11 +223,23 @@ export default function App() {
           onSelect={playStage}
           onBack={() => { sfx.uiTap(); setScreen('category') }}
           onZukan={() => openZukan('map')}
+          onWorldZukan={() => { sfx.uiTap(); setScreen('world-zukan') }}
           reviewStage={reviewStage}
         />
       )}
 
       {screen === 'zukan' && <Zukan onBack={() => setScreen(zukanFrom)} />}
+      {screen === 'world-zukan' && <WorldZukan onBack={() => { sfx.uiTap(); setScreen('map') }} />}
+
+      {/* くに: 正解後の世界地図＋特徴オーバーレイ（ゲーム画面の上に重ねる。閉じると続行） */}
+      {countryIntro && (
+        <Suspense fallback={null}>
+          <CountryIntro
+            code={countryIntro}
+            onDone={() => { setCountryIntro(null); EventBus.emit('country-intro-done') }}
+          />
+        </Suspense>
+      )}
 
       {/* ㊷ ログインボーナス（1日1回・カテゴリ画面の上に重ねて出す） */}
       {bonusOpen && (

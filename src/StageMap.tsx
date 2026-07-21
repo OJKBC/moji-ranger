@@ -27,6 +27,8 @@ interface Props {
   onSelect: (stage: Stage, level: DifficultyLevel) => void
   onBack: () => void
   onZukan: () => void
+  /** くにカテゴリで「せかいずかん」を開く（world のときだけ特別ノードを出す） */
+  onWorldZukan?: () => void
   /** ㊾c にがてが溜まったときだけ渡される「ふくしゅうステージ」（キラキラの特別ノード） */
   reviewStage?: Stage | null
 }
@@ -38,7 +40,7 @@ interface Props {
  * 選択の自由は狭めない（⑫⑲）: カテゴリ内のステージは（解放済みなら）タップで選べる。
  * 各ステージ内の難易度ゲートは維持（クリアで次のレベルへ）。スクロール可・safe area 対応。
  */
-export function StageMap({ category, onSelect, onBack, onZukan, reviewStage }: Props) {
+export function StageMap({ category, onSelect, onBack, onZukan, onWorldZukan, reviewStage }: Props) {
   const progress = loadProgress()
   const stages = stagesInCategory(category)
   const meta = CATEGORY_META[category]
@@ -98,6 +100,16 @@ export function StageMap({ category, onSelect, onBack, onZukan, reviewStage }: P
               <small>にがてを おさらいしよう！</small>
             </span>
             <span className="review-stage-spark right" aria-hidden>✨</span>
+          </button>
+        )}
+        {/* くに: せかいずかん（あつめた国旗）への入り口 */}
+        {category === 'world' && onWorldZukan && (
+          <button className="review-stage-node world-zukan-node" onClick={() => { sfx.uiTap(); onWorldZukan() }}>
+            <span className="review-stage-icon">🌏</span>
+            <span className="review-stage-text">
+              <b>せかいずかん</b>
+              <small>あつめた くにを みる</small>
+            </span>
           </button>
         )}
         {/* スタート地点（旗） */}

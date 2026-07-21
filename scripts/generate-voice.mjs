@@ -157,6 +157,46 @@ export const VOICE_CLIPS: Record<string, string> = ${JSON.stringify(manifest, nu
 fs.writeFileSync(MANIFEST, ts)
 console.log(`${jobs.length} clips → voiceManifest.ts generated`)
 
+// ---- くに（国旗クイズ）クリップ: 国名・特徴・出題文（ja-JP-Nanami・文まるごと1クリップ）----
+// countries.ts から name と characteristics を抽出し、それぞれと「〇〇の はたは どれ？」を生成。
+// voice.speakCountry は「テキストそのもの」をキーに引くので、キー=生成テキストにする。
+const MANIFEST_COUNTRY = path.join(root, '..', 'src', 'audio', 'voiceManifestCountry.ts')
+const countriesSrc = readFile('src/data/countries.ts')
+const countryNames = [...countriesSrc.matchAll(/name:\s*'([^']+)'/g)].map(m => m[1])
+const countryChars = []
+for (const block of countriesSrc.matchAll(/characteristics:\s*\[([\s\S]*?)\]/g)) {
+  for (const s of block[1].matchAll(/'([^']+)'/g)) countryChars.push(s[1])
+}
+const countryPrompts = countryNames.map(n => `${n}の はたは どれ？`)
+const countryTexts = [...new Set([...countryNames, ...countryChars, ...countryPrompts])]
+const countryManifest = {}
+for (const text of countryTexts) {
+  const file = `country-${slug(text)}.mp3`
+  const out = path.join(DST, file)
+  if (!fs.existsSync(out)) {
+    const { audioStream } = await tts.toStream(text, { rate: '-3%' })
+    const chunks = []
+    await new Promise((resolve, reject) => {
+      audioStream.on('data', c => chunks.push(c))
+      audioStream.on('end', resolve)
+      audioStream.on('error', reject)
+    })
+    fs.writeFileSync(out, Buffer.concat(chunks))
+    process.stdout.write('. ')
+  }
+  countryManifest[text] = file
+}
+console.log('')
+const tsCountry = `/**
+ * くに（国旗クイズ）読み上げクリップのマニフェスト。scripts/generate-voice.mjs が自動生成する（手で編集しない）。
+ * キー=読み上げるテキストそのもの（国名・特徴・「〇〇の はたは どれ？」）→ public/assets/voice/ 内のファイル名。
+ * 空のときは voice.speak（トークン分割→クリップ/TTS）にフォールバックする。
+ */
+export const COUNTRY_VOICE_CLIPS: Record<string, string> = ${JSON.stringify(countryManifest, null, 2)}
+`
+fs.writeFileSync(MANIFEST_COUNTRY, tsCountry)
+console.log(`${countryTexts.length} country clips → voiceManifestCountry.ts generated`)
+
 // ---- 英語クリップ（en-US ニューラル音声・子ども向けの明るい声）----
 const MANIFEST_EN = path.join(root, '..', 'src', 'audio', 'voiceManifestEn.ts')
 const enJobs = [

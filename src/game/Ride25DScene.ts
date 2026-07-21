@@ -23,8 +23,9 @@ import type { SpeechRec, SpeechRecEvent } from '../speech'
 import { Deck } from '../learning/deck'
 import {
   captureFailCount, getBuddy, isCaptured, loadProgress,
-  recordAnswer, recordCaptureFail, recordCaptureSuccess, recordSeen, recordStageClear,
+  recordAnswer, recordCaptureFail, recordCaptureSuccess, recordCountryCollected, recordSeen, recordStageClear,
 } from '../store/progress'
+import { countryPrompt, similarFlagCodes } from '../data/countries'
 import type { DifficultyLevel, MathLevelSpec, MathProblem, Stage, StageBattle, StageResult, TargetKind } from '../types'
 
 export const GAME_W = 960
@@ -162,6 +163,8 @@ export class Ride25DScene extends Phaser.Scene {
   private currentProblem: MathProblem | null = null
   /** english: 今読み上げる英語トークン（アルファベット/単語）。統計キー・聞き直しにも使う */
   private currentEnWord = ''
+  /** country: 正解後の世界地図＋特徴オーバーレイ（React）が終わったら呼ぶ続き処理 */
+  private pendingCountryDone: (() => void) | null = null
   /** math: 直前に出した式（同じ式の連続を避ける） */
   private lastMathQuestion = ''
   /** abc: 「A for Apple」の例単語カード（㉚。聞き取り補助＝音が不明瞭でも区別できる） */
@@ -274,6 +277,13 @@ export class Ride25DScene extends Phaser.Scene {
     this.buddyId = getBuddy(loadProgress())
     if (this.buddyId) {
       this.load.image(`buddy-${this.buddyId}`, `${import.meta.env.BASE_URL}assets/monsters/${this.buddyId}.png`)
+    }
+
+    // くにステージ: 出題プールの国旗（PNG）を読み込む（選択肢バブルに画像で出す）
+    if (this.stageData.type === 'country') {
+      for (const code of this.stageData.battle?.letterPool ?? []) {
+        this.load.image(`flag-${code}`, `${import.meta.env.BASE_URL}assets/flags/${code}.png`)
+      }
     }
   }
 
@@ -436,8 +446,17 @@ export class Ride25DScene extends Phaser.Scene {
       }
     }
 
+    // くに: 正解後の世界地図＋特徴オーバーレイ（React）が閉じたら、続き（次の出題/浄化完了）へ
+    const onCountryIntroDone = () => {
+      const done = this.pendingCountryDone
+      this.pendingCountryDone = null
+      done?.()
+    }
+    EventBus.on('country-intro-done', onCountryIntroDone)
+
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.removeAllListeners()
+      EventBus.off('country-intro-done', onCountryIntroDone)
       voice.cancel()
       this.teardownSpeech()
     })
@@ -791,6 +810,10 @@ export class Ride25DScene extends Phaser.Scene {
       this.startEnglishStep()
       return
     }
+    if (this.stageData.type === 'country') {
+      this.startCountryStep()
+      return
+    }
     if (this.stageData.mode === 'sequence') {
       this.startSequenceStep()
       return
@@ -884,6 +907,64 @@ export class Ride25DScene extends Phaser.Scene {
       recordSeen(this.currentTarget, this.currentKind)
       this.beginStepInput()
     })
+  }
+
+  /**
+   * country モード（こっきクイズ）: 「〇〇の はたは どれ？」と音声で伝え、
+   * 正しい国旗の画像バブルを選ぶ。共通エンジンの find と同じ入力・進行。
+   * 出題国は難易度で開放数が増え、上の難易度ほど似た国旗をダミーに混ぜる。
+   * 正解後の「世界地図＋特徴」演出は resolveCorrect → CountryIntro（React）で行う。
+   */
+  private startCountryStep(): void {
+    this.currentKind = 'country'
+    const pool = this.battle.letterPool
+    // 開放数（難易度で増える）: poolStart + poolBonus、プール長で頭打ち（L1=6/L2=12/L3以降=全部）
+    const openCount = Math.min(pool.length, this.battle.poolStart + this.tune.poolBonus)
+    const available = pool.slice(0, Math.max(this.battle.choiceCount, openCount))
+    // 出題国: ボスは練習した国を優先、ザコはデッキ方式（全部出し切るまで繰り返さない）
+    const target = this.bossActive && this.practiced.length
+      ? this.practiced[Phaser.Math.Between(0, this.practiced.length - 1)]
+      : this.deckFor(`country-${available.length}`, [...available]).next(() => Math.random())
+    this.currentTarget = target
+    this.recentTargets.push(target)
+
+    // 選択肢数（正答率で自動増減。base は難易度で choiceBonus 込み）
+    const attempts = this.sessionCorrect + this.wrongTotal
+    const accuracy = attempts > 0 ? this.sessionCorrect / attempts : 1
+    let choiceCount = this.battle.choiceCount
+    if (attempts >= 3 && accuracy < 0.7) choiceCount = Math.max(3, choiceCount - 1)
+    // 難易度が上がる（useConfusables）と似た国旗を優先で混ぜる
+    const useSimilar = this.tune.useConfusables || (attempts >= 3 && accuracy > 0.85)
+    const distractors = this.pickCountryDistractors(target, available, choiceCount - 1, useSimilar)
+    const labels = Phaser.Utils.Array.Shuffle([target, ...distractors])
+    this.time.delayedCall(this.tune.fastPrompt ? 340 : 420, () => {
+      this.spawnBubbleArc(labels)
+      recordSeen(target, 'country')
+      // 出題は音声で（旗は見せているが、どの国かは音声だけで伝える）
+      voice.speakCountry(countryPrompt(target))
+      this.tweens.add({ targets: this.missionBar, scale: 1.07, duration: 200, yoyo: true, repeat: 1 })
+      this.beginStepInput()
+    })
+  }
+
+  /**
+   * くにのダミー国旗を選ぶ。難易度が上がると「似た国旗」（SIMILAR_FLAG_GROUPS）を優先で混ぜ、
+   * 足りない分は開放済みプールからランダムに補う（正解コードは除外）。
+   */
+  private pickCountryDistractors(target: string, available: string[], n: number, useSimilar: boolean): string[] {
+    const out: string[] = []
+    const rest = available.filter(c => c !== target)
+    if (useSimilar) {
+      for (const s of Phaser.Utils.Array.Shuffle(similarFlagCodes(target).filter(c => available.includes(c)))) {
+        if (out.length >= n) break
+        out.push(s)
+      }
+    }
+    for (const c of Phaser.Utils.Array.Shuffle(rest)) {
+      if (out.length >= n) break
+      if (!out.includes(c)) out.push(c)
+    }
+    return out.slice(0, n)
   }
 
   /**
@@ -1584,6 +1665,11 @@ export class Ride25DScene extends Phaser.Scene {
       voice.speak('よんでみてね！')
       return
     }
+    if (this.stageData.type === 'country') {
+      // くに: 「〇〇の はたは どれ？」をもう一度（答えの国旗は光らせない）
+      if (this.currentTarget) voice.speakCountry(countryPrompt(this.currentTarget))
+      return
+    }
     if (this.currentTarget) voice.speak(`${this.currentTarget}！`, { rate: 0.7 })
   }
 
@@ -1614,14 +1700,25 @@ export class Ride25DScene extends Phaser.Scene {
     const imgScale = 160 / Math.max(tex.width, tex.height) // 直径160px 基準（radius 計算と一致）
     const backing = this.add.circle(0, 0, 66, BUBBLE_COLORS[colorIndex], 0.82)
     const bubble = this.add.image(0, 0, 'img-bubble').setScale(imgScale)
-    // 複数文字（英単語スペル・ひらがなの意味など）は円に収まるよう文字を小さくする
-    const n = [...label].length
-    const fontSize = n >= 5 ? '30px' : n >= 4 ? '36px' : n >= 3 ? '44px' : n >= 2 ? '52px' : '62px'
-    const letter = this.add.text(0, 0, label, {
-      fontFamily: FONT, fontSize, fontStyle: 'bold', color: '#33336b',
-    }).setOrigin(0.5).setStroke('#ffffff', n >= 4 ? 6 : 8)
+    // くに: label は国コード。文字ではなく国旗の画像を円に収めて出す（旗の縦横比を保つ）
+    let content: Phaser.GameObjects.GameObject
+    if (kind === 'country' && this.textures.exists(`flag-${label}`)) {
+      const ftex = this.textures.get(`flag-${label}`).getSourceImage()
+      const fScale = Math.min(104 / ftex.width, 78 / ftex.height) // 円内に収まる最大サイズ
+      const flag = this.add.image(0, 0, `flag-${label}`).setScale(fScale)
+      // 旗のふちに白リング（背景に溶けないよう視認性を担保）
+      const frame = this.add.circle(0, 0, 56, 0xffffff, 0).setStrokeStyle(4, 0xffffff, 0.95)
+      content = this.add.container(0, 0, [flag, frame])
+    } else {
+      // 複数文字（英単語スペル・ひらがなの意味など）は円に収まるよう文字を小さくする
+      const n = [...label].length
+      const fontSize = n >= 5 ? '30px' : n >= 4 ? '36px' : n >= 3 ? '44px' : n >= 2 ? '52px' : '62px'
+      content = this.add.text(0, 0, label, {
+        fontFamily: FONT, fontSize, fontStyle: 'bold', color: '#33336b',
+      }).setOrigin(0.5).setStroke('#ffffff', n >= 4 ? 6 : 8)
+    }
     // 文字バブルは常に不透明・最前面（敵と重なってもくっきり）
-    const container = this.add.container(x, y, [backing, bubble, letter]).setDepth(6000)
+    const container = this.add.container(x, y, [backing, bubble, content]).setDepth(6000)
     const baseScale = 0.76
     const choice: ChoiceBubble = {
       container, label, kind,
@@ -1697,6 +1794,22 @@ export class Ride25DScene extends Phaser.Scene {
       this.clearBubbles()
       this.celebrateWord(this.currentWord, this.currentCelebration)
       this.time.delayedCall(1200, () => this.completePurify())
+      this.updateDebugHook()
+      return
+    }
+
+    // くに: 正解した国旗を撃ち抜いたら、せかいずかんに登録 → 世界地図＋特徴の紹介演出（React）へ。
+    // 演出が終わってから（country-intro-done）、続き（次の出題 or 浄化完了）を進める。
+    if (this.stageData.type === 'country') {
+      const code = b.label
+      recordCountryCollected(code)
+      this.clearBubbles()
+      // 続き処理を保留して、React オーバーレイの完了を待つ（テンポは overlay 側で制御）
+      this.pendingCountryDone = () => {
+        if (wordDone) this.completePurify()
+        else this.startPurifyStep()
+      }
+      EventBus.emit('country-intro', { code })
       this.updateDebugHook()
       return
     }

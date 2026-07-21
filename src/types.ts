@@ -14,8 +14,8 @@ export interface Hero {
   frameIndex: number
 }
 
-export type StageType = 'hiragana' | 'katakana' | 'number' | 'math' | 'boss' | 'english'
-export type TargetKind = 'hiragana' | 'katakana' | 'number' | 'picture' | 'english'
+export type StageType = 'hiragana' | 'katakana' | 'number' | 'math' | 'boss' | 'english' | 'country'
+export type TargetKind = 'hiragana' | 'katakana' | 'number' | 'picture' | 'english' | 'country'
 /** ゲームプレイの型。find=正解さがし / sequence=順序撃ち / math=算数ゲート */
 export type StageMode = 'find' | 'sequence' | 'math' | 'read'
 /**
@@ -120,7 +120,7 @@ export interface MathLevelSpec {
 }
 
 /** ㊺ 大枠カテゴリ（起動後の選択画面／地図のグループ分け） */
-export type StageCategory = 'jp' | 'en' | 'math'
+export type StageCategory = 'jp' | 'en' | 'math' | 'world'
 
 export interface Stage {
   id: string
@@ -209,6 +209,10 @@ export interface PlayerProgress {
   mathStats: Record<string, LetterStats>
   /** 英語（アルファベット・単語）の学習統計（schemaVersion 5 で追加） */
   englishStats: Record<string, LetterStats>
+  /** 「くに」ステージの国コードごとの学習統計（schemaVersion 8 で追加） */
+  countryStats: Record<string, LetterStats>
+  /** せかいずかん: 正解してあつめた国コード一覧（schemaVersion 8 で追加） */
+  collectedCountries: string[]
   /** ステージごとのベスト★（schemaVersion 2 で追加） */
   stageStars: Record<string, number>
   /** ステージごとのクリア済み最高難易度 0〜3（schemaVersion 3 で追加） */

@@ -3,7 +3,7 @@ import { MAX_DIFFICULTY } from '../types'
 import type { DifficultyLevel, LetterStats, PlayerProgress, Stage, TargetKind } from '../types'
 
 const STORAGE_KEY = 'moji-ranger-progress'
-const SCHEMA_VERSION = 7
+const SCHEMA_VERSION = 8
 
 function defaultStats(): LetterStats {
   return { seen: 0, correct: 0, wrong: 0, avgReactionTime: 0, masteryLevel: 0, assistedCorrect: 0 }
@@ -20,6 +20,8 @@ function defaultProgress(): PlayerProgress {
     numberStats: {},
     mathStats: {},
     englishStats: {},
+    countryStats: {},
+    collectedCountries: [],
     stageStars: {},
     stageLevels: {},
     capturedMonsters: [],
@@ -48,8 +50,9 @@ export function migrateProgress(parsed: Partial<PlayerProgress>): PlayerProgress
   const merged = { ...base, ...parsed, schemaVersion: SCHEMA_VERSION }
   // 型の整合性チェック（壊れたフィールドだけ既定値に戻す＝部分復元）
   if (!Array.isArray(merged.capturedMonsters)) merged.capturedMonsters = []
+  if (!Array.isArray(merged.collectedCountries)) merged.collectedCountries = []
   if (!Array.isArray(merged.unlockedStages)) merged.unlockedStages = base.unlockedStages
-  for (const key of ['letterStats', 'numberStats', 'mathStats', 'englishStats', 'stageStars', 'stageLevels', 'captureFailCounts'] as const) {
+  for (const key of ['letterStats', 'numberStats', 'mathStats', 'englishStats', 'countryStats', 'stageStars', 'stageLevels', 'captureFailCounts'] as const) {
     if (typeof merged[key] !== 'object' || merged[key] === null || Array.isArray(merged[key])) {
       ;(merged as Record<string, unknown>)[key] = {}
     }
@@ -76,6 +79,12 @@ export function migrateProgress(parsed: Partial<PlayerProgress>): PlayerProgress
   if (typeof merged.lastBonusDate !== 'string') merged.lastBonusDate = undefined
   // v7: 難易度を7段階に拡張（stageLevels は上限が広がるだけでデータ移行は不要）。
   //     たしざんは既存 'math-add-1' のまま引き継ぎ、ひきざんは新ID 'math-sub-1' で0から。
+  // v8: 「くに」ステージ（countryStats・collectedCountries）を追加。
+  //     どちらも新規の任意データ＝欠けていれば既定値（{} / []）のまま。既存データは無変更。
+  if ((parsed.schemaVersion ?? 1) < 8) {
+    if (!merged.countryStats) merged.countryStats = {}
+    if (!Array.isArray(merged.collectedCountries)) merged.collectedCountries = []
+  }
   return merged
 }
 
@@ -165,6 +174,7 @@ function statsMapFor(progress: PlayerProgress, kind: TargetKind | 'math'): Recor
   if (kind === 'math') return progress.mathStats
   if (kind === 'number') return progress.numberStats
   if (kind === 'english') return progress.englishStats
+  if (kind === 'country') return progress.countryStats
   return progress.letterStats
 }
 
@@ -324,6 +334,22 @@ export function recordCaptureFail(monsterId: string): void {
 /** そのモンスターの累計失敗回数（pity 判定用） */
 export function captureFailCount(progress: PlayerProgress, monsterId: string): number {
   return progress.captureFailCounts[monsterId] ?? 0
+}
+
+// ---- せかいずかん（くに・schemaVersion 8） ----
+
+/** その国をあつめた（＝一度でも正解した）か */
+export function isCountryCollected(progress: PlayerProgress, code: string): boolean {
+  return progress.collectedCountries.includes(code)
+}
+
+/** 国を正解した＝せかいずかんに登録する（重複しない） */
+export function recordCountryCollected(code: string): void {
+  const progress = loadProgress()
+  if (!progress.collectedCountries.includes(code)) {
+    progress.collectedCountries.push(code)
+    saveProgress(progress)
+  }
 }
 
 // ---- あいぼう（相棒・㊸） ----

@@ -109,6 +109,33 @@ battle: {
 },
 ```
 
+### くに（国旗クイズ）ステージ
+
+「〇〇の はたは どれ？」と音声で伝え、正しい**国旗の画像バブル**を撃つ 2.5D の find ステージ。
+正解すると **世界地図で「日本」と「出題国」をハイライト**し、その国の**特徴を2〜3個やさしい音声**で
+読み上げる（`src/CountryIntro.tsx`）。正解した国は **せかいずかん**（`src/WorldZukan.tsx`）に貯まる。
+
+**国の追加・特徴の修正は `src/data/countries.ts` の編集だけ**でできる（`code` は ISO 3166-1 alpha-2 小文字）:
+
+```ts
+{ code: 'fr', name: 'フランス', characteristics: [
+  'ヨーロッパに ある くにだよ',   // 1個目は「場所」を入れると分かりやすい
+  'パンや ケーキが とても おいしい',
+  'サッカーが つよいよ',
+] },
+```
+
+編集したら次の2つを再実行する（どちらもネット上の画像を拾わず、同梱パッケージ／TTSから作る）:
+
+```bash
+node scripts/prepare-flags.mjs    # 新しい国の国旗PNGを public/assets/flags/ に用意（flag-icons から）
+node scripts/generate-voice.mjs   # 新しい国名・特徴・出題文の読み上げクリップを生成
+```
+
+難易度は共通ルール（`src/data/difficulty.ts`）。上の難易度ほど**出題国が増え**（poolStart＋poolBonus）、
+**似た国旗**（`SIMILAR_FLAG_GROUPS`＝仏/伊・蘭/露 など）がダミーに混ざる。カテゴリ「くに」は
+`stages.ts` の `CATEGORY_ORDER / CATEGORY_META` に登録済み（カテゴリ選択に自動で並ぶ）。
+
 ### 2D 固定画面ステージ（renderer 省略・レガシー）
 
 3つのゲームモードが使える:
@@ -181,10 +208,23 @@ node scripts/prepare-assets.mjs
 - **注意**: 画像の実ファイル名（＝ID）は変えないこと（Webパスと「なかま」記録が壊れるため）。名前だけを変える。
 - JSON に無いIDは「もやもやNごう」の仮名が自動で付く（`monsterName()`）。仮名を直したいときは JSON に足す。
 
+## 素材のライセンス・クレジット
+
+外部からの画像収集（クロール）は行わず、オープンライセンスの npm パッケージ／同梱データのみ使用:
+
+- **国旗**: [flag-icons](https://github.com/lipis/flag-icons)（**MIT License**）。ビルド時に必要な国だけ
+  `sharp` で PNG 化して `public/assets/flags/` に置く（`scripts/prepare-flags.mjs`）。
+- **世界地図**: [@svg-maps/world](https://github.com/VictorCazanave/svg-maps)（**CC BY 4.0**・作者 Victor Cazanave）。
+  国ごとの SVG パスを `src/CountryIntro.tsx` で描画してハイライトする。
+- **読み上げ**: Microsoft Edge のニューラル TTS（`ja-JP-Nanami` ほか）で事前生成した mp3（`scripts/generate-voice.mjs`）。
+
+いずれも外部通信なしでオフライン動作する（GitHub Pages 上でも同梱アセットだけで表示）。
+
 ## 開発用スクリプト
 
 - `scripts/shot.mjs` … タイトル〜ゲーム画面のスクリーンショットを撮る（要 Edge）
 - `scripts/play-through.mjs` … 8ラウンド自動プレイして正解演出・リザルト・localStorage 記録を検証する
+- `scripts/prepare-flags.mjs` … `src/data/countries.ts` の国の国旗を PNG 化（flag-icons → `public/assets/flags/`）
 
 ## 構成
 
