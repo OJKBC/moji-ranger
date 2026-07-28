@@ -2430,7 +2430,8 @@ export class Ride25DScene extends Phaser.Scene {
     }
     this.updateDebugHook()
     if (this.lives === 1) {
-      this.assistStruggling()
+      // 誤答直後なので再読み上げはしない（③ フィードバックの音を切らない）。選択肢だけそっと減らす。
+      this.assistStruggling(false)
     } else if (this.lives <= 0) {
       this.failStage()
     }
@@ -2459,11 +2460,16 @@ export class Ride25DScene extends Phaser.Scene {
    * 立て、その問題の正解は補助あり扱いで記録する（習熟度を水増ししない）。
    * 選択肢は「正解＋ダミー1つ」の2択までしか減らさない（1択＝答えを教える、になるため）。
    */
-  private assistStruggling(): void {
+  private assistStruggling(reRead = true): void {
     if (!this.stepActive) return
-    // ① もう一度読み上げ（答えは映さず、音だけ）
-    this.speakPrompt()
-    this.tweens.add({ targets: this.missionBar, scale: 1.08, duration: 180, yoyo: true, repeat: 1 })
+    // ① もう一度読み上げ（答えは映さず、音だけ）。
+    //    ただし誤答直後（loseLife 経由）は reRead=false: 直前の「これは、○、だよ」フィードバックが
+    //    まだ再生中で、ここで speakPrompt するとクリップ連結を止めて「これは」で切れてしまう
+    //    （狙いの再読み上げは resolveWrong の 2900ms タイマーで別途行われるので不要）。
+    if (reRead) {
+      this.speakPrompt()
+      this.tweens.add({ targets: this.missionBar, scale: 1.08, duration: 180, yoyo: true, repeat: 1 })
+    }
     // ② ダミーを1つ減らす（正解は必ず残す）。
     //    sequence（もじもじアトラクション）では単語の全文字が最初から一度に並んでいる。
     //    いま撃つ文字は currentTarget だが、これから撃つ文字（例:「あり」の「り」）も“正解の一部”で、

@@ -112,8 +112,6 @@ export function StageMap({ category, onSelect, onBack, onZukan, onWorldZukan, re
             </span>
           </button>
         )}
-        {/* スタート地点（旗） */}
-        <div className="path-start">🚩 スタート</div>
         {stages.map((stage, i) => {
           const unlocked = isStageUnlocked(stage, progress)
           const cleared = clearedLevelOf(progress, stage.id)
@@ -151,8 +149,6 @@ export function StageMap({ category, onSelect, onBack, onZukan, onWorldZukan, re
             </div>
           )
         })}
-        {/* ゴール地点（お城＝街が助かる） */}
-        <div className="path-goal">🏰 ゴール</div>
       </div>
 
       {/* 難易度えらび: 前回の続き（高い難易度）に強制されず、最初から/つづきから 選べる */}
