@@ -6,7 +6,7 @@ import namesJson from './monster-names.json'
  * 名前の唯一の元データは src/data/monster-names.json（ID→なまえ）。
  * **名前を直したいときは monster-names.json を編集するだけ**でアプリ全体に反映される。
  * 直したら scripts/generate-voice.mjs を再実行すると読み上げ音声も更新される。
- * 未定義のIDには「もやもやNごう」の仮名が自動で付く（monsterName 参照）。
+ * 未定義のIDには「モンスターNごう」の仮名が自動で付く（monsterName 参照）。
  */
 export const MONSTER_NAMES: Record<string, string> = namesJson
 
@@ -37,11 +37,11 @@ export function isCapturable(id: string): boolean {
 /** モンスターIDの一覧（よわい→つよい。名前フォールバックの通し番号にのみ使用） */
 export const ALL_MONSTER_IDS: string[] = [...WEAK_MONSTER_IDS, ...STRONG_MONSTER_IDS]
 
-/** 名前を返す（未定義なら「もやもやNごう」の仮名） */
+/** 名前を返す（未定義なら「モンスターNごう」の仮名） */
 export function monsterName(id: string): string {
   if (MONSTER_NAMES[id]) return MONSTER_NAMES[id]
   const index = ALL_MONSTER_IDS.indexOf(id)
-  return `もやもや${index >= 0 ? index + 1 : 0}ごう`
+  return `モンスター${index >= 0 ? index + 1 : 0}ごう`
 }
 
 /** モンスターIDから画像URL（ずかん用） */

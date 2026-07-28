@@ -924,7 +924,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * ライフを1減らす。ハートは割れずに「もやもや」に包まれる見せ方。
+   * ライフを1減らす。ダメージを受けたハートは1つ、そっと消える（空ハートに変わる）。
    * 残り1（=2回ミス）になった時点で必ず正解を光らせ、負ける前に助け舟を出す。
    */
   private loseLife(): void {
@@ -933,8 +933,10 @@ export class GameScene extends Phaser.Scene {
     sfx.lifeLose()
     const heart = this.heartIcons[this.lives]
     if (heart) {
-      heart.setText('🌫️').setAlpha(0.9)
-      this.tweens.add({ targets: heart, scale: 1.3, duration: 140, yoyo: true })
+      this.tweens.add({
+        targets: heart, scale: 1.3, duration: 140, yoyo: true,
+        onYoyo: () => heart.setText('🤍').setAlpha(0.85),
+      })
     }
     if (this.lives === 1) {
       this.glowCorrectTarget()

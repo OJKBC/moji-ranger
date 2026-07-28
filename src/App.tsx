@@ -296,8 +296,8 @@ export default function App() {
             ⬅
           </button>
           {/* やさしい失敗表現: 暗転させない・叱らない・すぐ再挑戦できる */}
-          <div className="fail-hearts">🌫️ 🌫️ 🌫️</div>
-          <h2 className="fail-heading">もやもやに つつまれちゃった！</h2>
+          <div className="fail-hearts">🤍 🤍 🤍</div>
+          <h2 className="fail-heading">またチャレンジしてね！</h2>
           <p className="result-detail">だいじょうぶ！ もういちど やってみよう</p>
           <button
             className="big-button"

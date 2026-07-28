@@ -657,7 +657,7 @@ export class Ride25DScene extends Phaser.Scene {
   private spawnApproaching(isBoss: boolean): void {
     const { key, group } = this.pickMonster(isBoss)
     this.approachGroup = group
-    // もやに取り憑かれている間はくすんだ色（浄化で本来の色に戻る）
+    // 最初はくすんだ色。正解を重ねると本来の色に戻って笑顔で空へ帰る
     const sprite = this.add.image(0, 0, key)
       .setOrigin(0.5, 0.5).setDepth(3500).setVisible(false).setTint(0xb8b8cc)
     // 対峙位置（z≈90）でちょうど対峙サイズになる逆算スケール
@@ -747,8 +747,8 @@ export class Ride25DScene extends Phaser.Scene {
       },
     })
 
-    // 黒いもやのパフは廃止（モンスターが隠れて見えないため）。
-    // 「もやに取り憑かれている」表現は、くすんだ色（tint）→浄化で本来の色に戻る、で行う
+    // パフ演出は使わない（モンスターが隠れて見えないため）。
+    // くすんだ色（tint）→ 正解で本来の色に戻る、で「元気になっていく」を表現する。
     this.mistPuffs = []
 
     // 浄化メーターは複数回のときだけ（ザコ1発はテンポ優先）
@@ -1876,7 +1876,7 @@ export class Ride25DScene extends Phaser.Scene {
         onComplete: () => glow.destroy(),
       })
     }
-    // もやが段階的に晴れる
+    // （旧演出のなごり。mistPuffs は空なので実質何もしない）
     const perStep = Math.ceil(this.mistPuffs.length / this.purifyStepsNeeded)
     const start = (this.purifyStep - 1) * perStep
     for (const puff of this.mistPuffs.slice(start, start + perStep)) {
@@ -2288,7 +2288,7 @@ export class Ride25DScene extends Phaser.Scene {
     // 知識の誤りなので統計に記録（撃ち逃し・時間切れは記録しない。失敗になってもここまでの記録は残る）
     this.recordStat(false)
 
-    // 流れ: モンスターの反撃（もやもや玉・かわいく短く）→ やさしいフィードバック → ライフ減
+    // 流れ: モンスターの反応（かわいく短く膨れるだけ）→ やさしいフィードバック → ライフ減
     this.monsterAttack()
 
     this.time.delayedCall(400, () => {
@@ -2326,7 +2326,7 @@ export class Ride25DScene extends Phaser.Scene {
       if (this.stepActive) this.speakPrompt()
     })
 
-    // ライフも同じ思想: 誤答ショットのときだけ減る（もや玉が届いたタイミングで）。
+    // ライフも同じ思想: 誤答ショットのときだけ減る（少し間を置いてから）。
     // 残り1になったら loseLife 内で助け舟（読み上げ＋選択肢を1つ減らす）を出す。
     // ㉛ 正解を大きくする／光らせる等の「答えを指し示す」視覚ヒントは廃止。
     this.time.delayedCall(650, () => {
@@ -2336,29 +2336,20 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   /**
-   * 誤答時のモンスターの反撃（非暴力・罰しない）:
-   * ぷくっと膨れて、もやもや玉をポンっと1つ投げてくる。手元が軽く押されるだけで
-   * 暗転・大きなショック演出はしない。撃ち逃し・時間切れでは呼ばれない。
+   * 誤答時のモンスターの反応（非暴力・罰しない）:
+   * ぷくっと軽く膨れて、ちょっと首をかしげるだけ。玉を投げる等の攻撃演出はしない
+   * （暗転・大きなショック演出もしない）。撃ち逃し・時間切れでは呼ばれない。
    */
   private monsterAttack(): void {
     const m = this.monster
     if (!m) return
-    // ぷくっと膨れる
+    // ぷくっと膨れて、ちょこんと揺れる（かわいい反応・攻撃はしない）
     this.tweens.add({
       targets: m, scaleX: m.scaleX * 1.1, scaleY: m.scaleY * 0.92,
       duration: 130, yoyo: true, ease: 'Sine.easeInOut',
     })
-    // もやもや玉（文字バブルより下の深度＝文字は隠さない）
-    const puff = this.add.image(m.x, m.y + 40, 'mist').setDepth(5850).setScale(0.4).setAlpha(0.95)
-    const tx = GAME_W / 2 + Phaser.Math.Between(-70, 70)
     this.tweens.add({
-      targets: puff, x: tx, y: GAME_H - 140, scale: 1.05, duration: 430, ease: 'Sine.easeIn',
-      onComplete: () => {
-        // ふわっと弾けて消える＋両手が軽くもやに押される
-        this.tweens.add({ targets: puff, scale: 1.5, alpha: 0, duration: 220, onComplete: () => puff.destroy() })
-        this.tweens.add({ targets: this.handR, x: GAME_W - 158, duration: 90, yoyo: true })
-        this.tweens.add({ targets: this.handL, x: 158, duration: 90, yoyo: true })
-      },
+      targets: m, angle: m.angle + 5, duration: 110, yoyo: true, repeat: 1, ease: 'Sine.easeInOut',
     })
   }
 
@@ -2415,7 +2406,7 @@ export class Ride25DScene extends Phaser.Scene {
   }
 
   /**
-   * ライフを1減らす。ハートは割れずに「もやもや」に包まれる見せ方。
+   * ライフを1減らす。ダメージを受けたハートは1つ、そっと消える（空ハートに変わる）。
    * 残り1（=2回ミス）になった時点で助け舟を出す（㉛ 正解は光らせず、
    * もう一度読み上げ＋ダミーを1つ減らす＝答えは見せない支援）。
    */
@@ -2425,8 +2416,11 @@ export class Ride25DScene extends Phaser.Scene {
     sfx.lifeLose()
     const heart = this.heartIcons[this.lives]
     if (heart) {
-      heart.setText('🌫️').setAlpha(0.9)
-      this.tweens.add({ targets: heart, scale: 1.3, duration: 140, yoyo: true })
+      // ハートは1つ消える（空ハートに）。ふわっと縮んでから空になる、やさしい見せ方。
+      this.tweens.add({
+        targets: heart, scale: 1.3, duration: 140, yoyo: true,
+        onYoyo: () => heart.setText('🤍').setAlpha(0.85),
+      })
     }
     this.updateDebugHook()
     if (this.lives === 1) {

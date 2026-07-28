@@ -80,7 +80,7 @@ export interface StageBattle {
 /** 敵のランタイム状態 */
 export interface EnemyState {
   id: string
-  /** 0..1。正解ごとに進む（=もやが晴れる） */
+  /** 0..1。正解ごとに進む（=モンスターが元気になっていく） */
   purifyMeter: number
   mood: 'hazy' | 'clearing' | 'happy'
 }
