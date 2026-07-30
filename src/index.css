@@ -1469,3 +1469,172 @@ body {
   border: 3px solid #fff;
 }
 .world-zukan-node { background: linear-gradient(180deg, #fff3d6, #ffd98a); }
+
+/* ============================ かぞえて モンスター（CountMonster・暗算不要さんすう） ======= */
+
+.count-screen {
+  width: min(96vw, 720px);
+  height: 100vh;
+  height: 100svh;
+  max-height: calc(100svh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(8px, 1.6vh, 16px);
+  padding: calc(env(safe-area-inset-top) + 10px) 14px calc(env(safe-area-inset-bottom) + 10px);
+  overflow: hidden;
+}
+
+.count-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+}
+.count-prompt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.count-prompt span {
+  font-size: clamp(18px, 3vh, 28px);
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+.count-replay {
+  flex-shrink: 0;
+  font-size: 22px;
+  width: 46px; height: 46px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+}
+.count-hearts { flex-shrink: 0; font-size: clamp(20px, 3vh, 28px); letter-spacing: 2px; }
+
+/* テンフレーム（2×5＝10の枠） */
+.count-stage {
+  display: flex;
+  align-items: center;
+  gap: clamp(10px, 3vw, 26px);
+  flex: 0 0 auto;
+}
+.tenframe {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: clamp(4px, 1vw, 8px);
+  padding: clamp(6px, 1.4vw, 10px);
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  border: 3px solid rgba(255, 255, 255, 0.45);
+}
+.tf-cell {
+  width: clamp(44px, 9vw, 72px);
+  height: clamp(44px, 9vw, 72px);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 2px dashed rgba(255, 255, 255, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tf-cell.filled { background: rgba(255, 240, 200, 0.18); border-style: solid; }
+.tf-cell.need { border-color: #ffd94d; box-shadow: 0 0 10px rgba(255, 217, 77, 0.6) inset; animation: tfNeed 1.1s ease-in-out infinite; }
+@keyframes tfNeed { 50% { border-color: #fff3b0; } }
+.tf-monster { width: 90%; height: 90%; object-fit: contain; cursor: pointer; animation: tfPop 0.28s ease-out; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55)); }
+@keyframes tfPop { from { transform: scale(0.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+.count-now { display: flex; flex-direction: column; align-items: center; }
+.count-now-num {
+  font-size: clamp(48px, 10vh, 92px);
+  font-weight: 900;
+  color: #ffd94d;
+  text-shadow: 0 4px 0 #b8860b, 0 8px 16px rgba(0, 0, 0, 0.4);
+  line-height: 1;
+}
+.count-need { font-size: clamp(16px, 2.4vh, 22px); font-weight: bold; color: #fff; margin-top: 4px; }
+
+/* 操作エリア */
+.count-actions {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(8px, 1.6vh, 16px);
+}
+.count-pool {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: clamp(6px, 1.6vw, 14px);
+  max-width: 100%;
+}
+.pool-monster {
+  width: clamp(56px, 12vw, 92px);
+  height: clamp(56px, 12vw, 92px);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: rgba(40, 26, 74, 0.55);
+  border-radius: 18px;
+  cursor: pointer;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+  transition: transform 0.08s;
+  padding: 4px;
+}
+.pool-monster:active { transform: translateY(3px) scale(0.96); }
+.pool-monster img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5)); }
+.chunk-monsters img { filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4)); }
+
+.count-done { padding: 14px 44px; }
+.count-hint { font-size: clamp(16px, 2.6vh, 22px); font-weight: bold; color: #fff; text-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+
+/* make10 の「かたまり」選択 */
+.count-chunks { display: flex; flex-wrap: wrap; justify-content: center; gap: clamp(8px, 2vw, 18px); }
+.chunk-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #fffdf5, #ffe9c2);
+  box-shadow: 0 5px 0 #d6a24d;
+  cursor: pointer;
+}
+.chunk-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #d6a24d; }
+.chunk-monsters { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; max-width: 160px; }
+.chunk-monsters img { width: clamp(16px, 4vw, 26px); height: clamp(16px, 4vw, 26px); object-fit: contain; }
+.chunk-num { font-size: 26px; font-weight: 900; color: #b8860b; }
+
+/* addsub の数字カード */
+.count-choices { display: flex; gap: clamp(10px, 3vw, 22px); }
+.choice-num {
+  width: clamp(70px, 16vw, 110px);
+  height: clamp(70px, 16vw, 110px);
+  font-size: clamp(36px, 8vw, 56px);
+  font-weight: 900;
+  color: #3a3a70;
+  border: none;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #fffdf5, #ffe9c2);
+  box-shadow: 0 6px 0 #d6a24d;
+  cursor: pointer;
+}
+.choice-num:active { transform: translateY(4px); box-shadow: 0 2px 0 #d6a24d; }
+
+.count-feedback { font-size: clamp(26px, 5vh, 42px); font-weight: 900; }
+.count-feedback.ok { color: #ffd94d; text-shadow: 0 3px 0 #b8860b; }
+.count-feedback.ng { color: #fff; text-shadow: 0 2px 6px rgba(0,0,0,0.5); }
+
+.count-progress { display: flex; gap: 8px; font-size: 16px; color: rgba(255,255,255,0.4); flex: 0 0 auto; }
+.count-progress .done { color: #ffd94d; }
+.count-progress .now { color: #fff; }

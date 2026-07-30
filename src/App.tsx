@@ -8,6 +8,7 @@ import { CategoryScreen } from './CategoryScreen'
 import { LoginBonus } from './LoginBonus'
 import { Zukan } from './Zukan'
 import { WorldZukan } from './WorldZukan'
+import { CountMonster } from './CountMonster'
 // くにの世界地図（@svg-maps/world）は大きいので、くにステージを遊ぶときだけ遅延読み込みする
 const CountryIntro = lazy(() => import('./CountryIntro').then(m => ({ default: m.CountryIntro })))
 import { REVIEW_MIN_WEAK, canClaimBonus, isStageUnlocked, loadProgress, weakKanaForReview } from './store/progress'
@@ -251,7 +252,9 @@ export default function App() {
 
       {screen === 'game' && (
         <>
-          <PhaserGame key={playKey} stage={stage} difficulty={difficulty} />
+          {stage.mode === 'count'
+            ? <CountMonster key={playKey} stage={stage} difficulty={difficulty} />
+            : <PhaserGame key={playKey} stage={stage} difficulty={difficulty} />}
           <button className="back-button" onClick={askQuit} aria-label="ステージマップへもどる">
             ⬅
           </button>

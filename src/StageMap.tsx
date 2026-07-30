@@ -15,6 +15,7 @@ const STAGE_ICONS: Record<string, string> = {
   'katakana-a': 'ア',
   'word-neko': '🐱',
   'number-3': '3',
+  'count-monster': '🔢',
   'math-add-1': '➕',
   'math-sub-1': '➖',
   'english-abc': 'A',
