@@ -15,6 +15,8 @@ import type { DifficultyTuning } from '../data/difficulty'
 import { BALLS, PITY_FAILS, rollBall } from '../data/balls'
 import type { BallSpec } from '../data/balls'
 import { monsterName } from '../data/monsterNames'
+import { MATH_BG, pickTheme } from '../data/themes'
+import type { Theme } from '../data/themes'
 import { pickDistractors } from '../learning/distractors'
 import { pickNextLetter, pickTargetLetter } from '../learning/picker'
 import { HIRAGANA_POOL, KATAKANA_POOL } from '../data/kana'
@@ -234,17 +236,23 @@ export class Ride25DScene extends Phaser.Scene {
   /** ③ デッキ方式の出題（プールごとに山札を保持＝全部出し切るまで繰り返さない） */
   private decks = new Map<string, Deck<unknown>>()
 
+  /** このプレイのテーマ（背景の世界）。さんすう以外はランダムに選ぶ＝出るモンスターも寄る */
+  private theme: Theme
+
   constructor(stage: Stage, difficulty: DifficultyLevel = 1) {
     super('Game')
     this.stageData = stage
     this.level = difficulty
+    // さんすう（たしざん/ひきざん）は落ち着いた background2 固定。それ以外はテーマをランダム抽選。
+    const isMath = stage.type === 'math' || stage.type === 'number'
+    this.theme = isMath
+      ? { id: 'math', bg: MATH_BG, keywords: [] }
+      : pickTheme()
   }
 
   preload(): void {
-    // 見た目素材は manifest 経由（public/assets/ 配下・丸ごと差し替え可能）
-    // さんすう（たしざん/ひきざん）は落ち着いた背景(background2)で数字を見やすく。それ以外は通常背景。
-    const isMath = this.stageData.type === 'math' || this.stageData.type === 'number'
-    this.load.image('img-bg', isMath ? `${import.meta.env.BASE_URL}assets/background2.jpg` : assetUrl('background'))
+    // 背景はテーマ（森/海/空/宇宙/地下/シティ・さんすうは background2）に応じて読み込む
+    this.load.image('img-bg', `${import.meta.env.BASE_URL}assets/${this.theme.bg}`)
     this.load.image('img-bubble', assetUrl('bubble'))
     this.load.image('img-hand-l', assetUrl('leftHand'))
     this.load.image('img-hand-r', assetUrl('rightHand'))
@@ -259,12 +267,21 @@ export class Ride25DScene extends Phaser.Scene {
       this.load.image(key, `${import.meta.env.BASE_URL}assets/monsters/${f}`)
       return key
     })
-    // ㉖ つよいの抽選は「未捕獲を優先」。今回読み込む顔ぶれ自体も未捕獲寄りに選び、
-    //    まだ捕まえていないボスが実際に登場しやすくする（捕獲済みも低い重みで残す）
+    // テーマに合う名前（例: 海なら「すいしょう/くらげ/さんご…」）のモンスターを出やすくする。
+    // 名前を含み一致でゆるく判定（keywords が空のシティ/さんすうは寄せなし＝全員1倍）。
+    const themeMatch = (f: string) => {
+      if (!this.theme.keywords.length) return false
+      const name = monsterName(f.replace(/\.png$/, ''))
+      return this.theme.keywords.some(k => name.includes(k))
+    }
+    // ㉖ つよいの抽選は「未捕獲を優先」。さらにテーマに合うモンスターを強めに寄せる
+    //    （ボスがその世界っぽくなる＝海ならボスが水っぽいタイプ 等）。捕獲済みも低い重みで残す。
     const capturedSet = new Set(loadProgress().capturedMonsters)
     const strongWeight = (f: string) =>
-      capturedSet.has(f.replace(/\.png$/, '')) ? 0.35 : 1
-    this.monsterKeys.weak = load(sample(MONSTER_FILES.weak, MONSTER_TABLE.sampleSize.weak))
+      (capturedSet.has(f.replace(/\.png$/, '')) ? 0.35 : 1) * (themeMatch(f) ? 5 : 1)
+    // 道中（よわい）もテーマに少しだけ寄せる（あるていど変わる程度）
+    const weakWeight = (f: string) => (themeMatch(f) ? 3 : 1)
+    this.monsterKeys.weak = load(this.weightedSample(MONSTER_FILES.weak, MONSTER_TABLE.sampleSize.weak, weakWeight))
     this.monsterKeys.strong = load(
       this.weightedSample(MONSTER_FILES.strong, MONSTER_TABLE.sampleSize.strong, strongWeight),
     )
@@ -2899,6 +2916,8 @@ export class Ride25DScene extends Phaser.Scene {
         purifyStep: this.purifyStep,
         target: this.currentTarget,
         group: this.approachGroup,
+        theme: this.theme.id,
+        strongLoaded: this.monsterKeys.strong.map(k => k.replace('mon-', '')),
         monsterKey: this.lastMonsterKey,
         lives: this.lives,
         wrongTotal: this.wrongTotal,
