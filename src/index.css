@@ -1485,26 +1485,32 @@ body {
   overflow: hidden;
 }
 
-.count-header {
+.count-topbar {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;   /* ハートは右。左上は ⬅ ボタンの領域なので空ける */
+  align-items: center;
+  min-height: 52px;
+  flex: 0 0 auto;
+}
+.count-prompt {
   width: 100%;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
-  margin-top: 8px;
-}
-.count-prompt {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1 1 auto;
-  min-width: 0;
+  /* 指示文は全幅の行。左は ⬅ ボタン（幅58＋余白）と重ならないよう空ける */
+  padding-left: 72px;
+  padding-right: 8px;
+  flex: 0 0 auto;
 }
 .count-prompt span {
-  font-size: clamp(18px, 3vh, 28px);
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: clamp(17px, 2.8vh, 28px);
   font-weight: 800;
   color: #fff;
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  line-height: 1.25;
 }
 .count-replay {
   flex-shrink: 0;
@@ -1539,8 +1545,8 @@ body {
 .count-herd-empty { color: rgba(255, 255, 255, 0.6); font-size: clamp(15px, 2.4vh, 20px); font-weight: bold; }
 /* 共通のモンスター見た目（透過に埋もれないよう濃いめの影で輪郭を出す・箱に入れない） */
 .count-mon {
-  width: clamp(52px, 11vw, 88px);
-  height: clamp(52px, 11vw, 88px);
+  width: clamp(72px, 17vw, 128px);
+  height: clamp(72px, 17vw, 128px);
   object-fit: contain;
   cursor: pointer;
   filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.65)) drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
@@ -1593,8 +1599,8 @@ body {
   max-width: 100%;
 }
 .pool-mon {
-  width: clamp(58px, 13vw, 96px);
-  height: clamp(58px, 13vw, 96px);
+  width: clamp(78px, 18vw, 132px);
+  height: clamp(78px, 18vw, 132px);
   object-fit: contain;
   cursor: pointer;
   filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.65)) drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { EventBus } from './EventBus'
 import { countSpec, TEN_FRAME_SIZE } from './data/counting'
 import type { CountMode, CountSpec } from './data/counting'
@@ -20,6 +20,9 @@ interface Mon { key: number; id: string; rot: number }
 
 let monKey = 0
 const rand = (min: number, max: number) => min + Math.floor(Math.random() * (max - min + 1))
+/** 数字の読み（1〜10。count/addsub/make10 の数はこの範囲）。読み上げ用トークン */
+const READ: Record<number, string> = { 1: 'いち', 2: 'に', 3: 'さん', 4: 'よん', 5: 'ご', 6: 'ろく', 7: 'なな', 8: 'はち', 9: 'きゅう', 10: 'じゅう' }
+const rn = (n: number) => READ[n] ?? String(n)
 function shuffle<T>(a: T[]): T[] { const r = [...a]; for (let i = r.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[r[i], r[j]] = [r[j], r[i]] } return r }
 
 /** n匹、色々な種類のモンスターを作る（1ゲーム内でもバラバラに出る） */
@@ -47,7 +50,8 @@ function numberChoices(answer: number, lo = 0, hi = 10): number[] {
 interface Question {
   mode: CountMode
   prompt: string
-  speak: string[]
+  /** 読み上げ文（数字も含めて全部読む。voice.speak が 、で区切ってクリップ連結） */
+  speak: string
   /** 正解の数 */
   answer: number
   /** テンフレームに最初からいる数（make10 のプレフィル） */
@@ -68,7 +72,8 @@ function makeQuestion(spec: CountSpec): Question {
     return {
       mode: 'count', answer: target, base: 0, need: target, release: false,
       choices: [], chunkChoices: [],
-      prompt: `${target}こ あつめよう！`, speak: ['あつめよう'],
+      prompt: `${target}こ あつめよう！`,
+      speak: `${rn(target)}、こあつめよう`,
     }
   }
   if (spec.mode === 'addsub') {
@@ -79,7 +84,8 @@ function makeQuestion(spec: CountSpec): Question {
       return {
         mode: 'addsub', answer: a - b, base: a, need: b, release: true,
         choices: numberChoices(a - b, 0, 10), chunkChoices: [],
-        prompt: `${a}こ いるね。${b}こ にがそう！`, speak: ['にがそう'],
+        prompt: `${a}こ いるね。${b}こ にがそう！`,
+        speak: `${rn(a)}、こいるね、${rn(b)}、こにがそう`,
       }
     }
     const a = rand(1, spec.addMax - 1)
@@ -87,7 +93,8 @@ function makeQuestion(spec: CountSpec): Question {
     return {
       mode: 'addsub', answer: a + b, base: a, need: b, release: false,
       choices: numberChoices(a + b, 1, 10), chunkChoices: [],
-      prompt: `${a}こ いるね。もう ${b}こ あつめよう！`, speak: ['あつめよう'],
+      prompt: `${a}こ いるね。もう ${b}こ あつめよう！`,
+      speak: `${rn(a)}、こいるね、もう、${rn(b)}、こあつめよう`,
     }
   }
   // make10
@@ -96,7 +103,7 @@ function makeQuestion(spec: CountSpec): Question {
   return {
     mode: 'make10', answer: need, base: prefill, need, release: false,
     choices: [], chunkChoices: numberChoices(need, 1, 9),
-    prompt: 'あと なんこで 10 かな？', speak: ['あとなんこでじゅう'],
+    prompt: 'あと なんこで 10 かな？', speak: 'あとなんこでじゅう',
   }
 }
 
@@ -121,7 +128,7 @@ export function CountMonster({ stage, difficulty }: Props) {
   const [pool, setPool] = useState<Mon[]>([])
 
   const speakPrompt = useCallback((question: Question) => {
-    voice.speak(question.speak[0] ?? '')
+    voice.speak(question.speak)
   }, [])
 
   const beginQuestion = useCallback((question: Question) => {
@@ -249,12 +256,6 @@ export function CountMonster({ stage, difficulty }: Props) {
   // やり直し（数え間違いをやさしく戻す）
   const resetRound = () => { if (phase === 'collecting' || phase === 'answering') beginQuestion(q) }
 
-  // make10 の「かたまり」候補は問題ごとに1回だけ作る（再描画で種類がちらつかないように）
-  const chunkMons = useMemo(
-    () => q.chunkChoices.map(k => ({ k, mons: makeMons(k) })),
-    [q],
-  )
-
   // addsub: 集め終え/にがし終えたら自動で「こたえをえらぶ」へ
   useEffect(() => {
     if (phase !== 'collecting' || q.mode !== 'addsub') return
@@ -279,15 +280,16 @@ export function CountMonster({ stage, difficulty }: Props) {
 
   return (
     <div className="count-screen">
-      {/* ヘッダー: 指示＋🔊＋ハート（大きな数字ヒントは出さない） */}
-      <div className="count-header">
-        <div className="count-prompt">
-          <span>{q.prompt}</span>
-          <button className="count-replay" onClick={() => { sfx.uiTap(); speakPrompt(q) }} aria-label="もういちど きく">🔊</button>
-        </div>
+      {/* 上段: ハート（右）。左上は App の「もどる」⬅ ボタンが重なる領域なので空ける */}
+      <div className="count-topbar">
         <div className="count-hearts">
           {[0, 1, 2].map(i => <span key={i}>{i < lives ? '💖' : '🤍'}</span>)}
         </div>
+      </div>
+      {/* 指示文は次の行に全幅で（⬅ と重ならないよう左を空ける）。大きな数字ヒントは出さない */}
+      <div className="count-prompt">
+        <span>{q.prompt}</span>
+        <button className="count-replay" onClick={() => { sfx.uiTap(); speakPrompt(q) }} aria-label="もういちど きく">🔊</button>
       </div>
 
       <div className="count-body">
@@ -334,13 +336,10 @@ export function CountMonster({ stage, difficulty }: Props) {
         )}
 
         {phase === 'collecting' && q.mode === 'make10' && (
-          <div className="count-chunks">
-            {chunkMons.map(({ k, mons }) => (
-              <button key={k} className="chunk-btn" onClick={() => pickChunk(k)}>
-                <span className="chunk-monsters">
-                  {mons.map(m => <img key={m.key} src={monsterImageUrl(m.id)} alt="" style={{ transform: `rotate(${m.rot}deg)` }} />)}
-                </span>
-              </button>
+          // 10をつくる: 選択肢は数字カード（空いた丸を数えて、その数をえらぶ）
+          <div className="count-choices">
+            {q.chunkChoices.map(k => (
+              <button key={k} className="choice-num" onClick={() => pickChunk(k)}>{k}</button>
             ))}
           </div>
         )}
