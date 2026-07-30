@@ -189,11 +189,18 @@ body {
   font-size: clamp(16px, 3.5vw, 20px);
   font-weight: bold;
   color: #ffffff;
-  background: rgba(255, 255, 255, 0.16);
-  border: 2px solid rgba(255, 255, 255, 0.5);
+  /* 透過をやめて、どの背景でもはっきり読めるよう不透過の背景色にする */
+  background: #5a4b8c;
+  border: 2px solid rgba(255, 255, 255, 0.7);
   border-radius: 999px;
   padding: 10px 30px;
   cursor: pointer;
+  box-shadow: 0 4px 0 #3c3160, 0 6px 12px rgba(0, 0, 0, 0.35);
+  transition: transform 0.08s ease;
+}
+.sub-button:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #3c3160, 0 3px 8px rgba(0, 0, 0, 0.35);
 }
 
 .title-note {
