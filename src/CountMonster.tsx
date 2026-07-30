@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import { EventBus } from './EventBus'
 import { countSpec, TEN_FRAME_SIZE } from './data/counting'
 import type { CountMode, CountSpec } from './data/counting'
-import { STRONG_MONSTER_IDS, monsterImageUrl } from './data/monsterNames'
+import { STRONG_MONSTER_IDS, WEAK_MONSTER_IDS, monsterImageUrl } from './data/monsterNames'
 import { recordAnswer, recordStageClear } from './store/progress'
 import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
@@ -25,13 +26,16 @@ const READ: Record<number, string> = { 1: 'いち', 2: 'に', 3: 'さん', 4: '�
 const rn = (n: number) => READ[n] ?? String(n)
 function shuffle<T>(a: T[]): T[] { const r = [...a]; for (let i = r.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[r[i], r[j]] = [r[j], r[i]] } return r }
 
-/** n匹、色々な種類のモンスターを作る（1ゲーム内でもバラバラに出る） */
+/** つよい・よわい両方から抽選する種プール（1ゲーム内でもバラバラに出る） */
+const SPECIES_POOL = [...STRONG_MONSTER_IDS, ...WEAK_MONSTER_IDS]
+
+/** n匹、色々な種類のモンスターを作る（つよい・よわい混在） */
 function makeMons(n: number): Mon[] {
-  const pool = shuffle(STRONG_MONSTER_IDS)
+  const pool = shuffle(SPECIES_POOL)
   return Array.from({ length: n }, (_, i) => ({
     key: monKey++,
     id: pool[i % pool.length] ?? 'monster-strong-1',
-    rot: rand(-14, 14),
+    rot: rand(-12, 12),
   }))
 }
 
@@ -256,6 +260,54 @@ export function CountMonster({ stage, difficulty }: Props) {
   // やり直し（数え間違いをやさしく戻す）
   const resetRound = () => { if (phase === 'collecting' || phase === 'answering') beginQuestion(q) }
 
+  // ---- スライド（ドラッグ）操作 ----
+  // モンスターは「スライドして」動かす（タップではない）:
+  //   プール → まんなか（あつめる場所）に置く＝あつめる / まんなか → 外に出す＝もどす・にがす。
+  const dropHerdOut = (m: Mon) => { if (q.release) release(m); else if (q.mode === 'count') putBack(m) }
+  const grabRef = useRef(grab); grabRef.current = grab
+  const dropOutRef = useRef(dropHerdOut); dropOutRef.current = dropHerdOut
+  const dropRef = useRef<HTMLDivElement>(null)
+  type Drag = { mon: Mon; from: 'pool' | 'herd'; x: number; y: number }
+  const dragRef = useRef<Drag | null>(null)
+  const [drag, setDrag] = useState<Drag | null>(null)
+
+  const startDrag = (e: ReactPointerEvent, m: Mon, from: 'pool' | 'herd') => {
+    if (phase !== 'collecting') return
+    if (from === 'pool' && q.release) return
+    if (from === 'herd' && !(q.release || q.mode === 'count')) return
+    e.preventDefault()
+    const d: Drag = { mon: m, from, x: e.clientX, y: e.clientY }
+    dragRef.current = d
+    setDrag(d)
+  }
+
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      if (!dragRef.current) return
+      const d = { ...dragRef.current, x: e.clientX, y: e.clientY }
+      dragRef.current = d
+      setDrag(d)
+    }
+    const up = (e: PointerEvent) => {
+      const d = dragRef.current
+      if (!d) return
+      dragRef.current = null
+      setDrag(null)
+      const dz = dropRef.current?.getBoundingClientRect()
+      const inside = !!dz && e.clientX >= dz.left && e.clientX <= dz.right && e.clientY >= dz.top && e.clientY <= dz.bottom
+      if (d.from === 'pool' && inside) grabRef.current(d.mon)        // プール→まんなか＝あつめる
+      else if (d.from === 'herd' && !inside) dropOutRef.current(d.mon) // まんなか→外＝もどす/にがす
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
+  }, [])
+
   // addsub: 集め終え/にがし終えたら自動で「こたえをえらぶ」へ
   useEffect(() => {
     if (phase !== 'collecting' || q.mode !== 'addsub') return
@@ -270,11 +322,12 @@ export function CountMonster({ stage, difficulty }: Props) {
   }, [phase, pool, collected, q])
 
   // ---- 描画 ----
-  const monImg = (m: Mon, cls: string, onClick?: () => void) => (
+  // from を渡すとスライド（ドラッグ）で動かせる。渡さなければ動かせない（make10 の枠内など）
+  const monImg = (m: Mon, cls: string, from?: 'pool' | 'herd') => (
     <img
-      key={m.key} src={monsterImageUrl(m.id)} alt="" className={cls}
-      style={{ transform: `rotate(${m.rot}deg)` }}
-      onClick={onClick}
+      key={m.key} src={monsterImageUrl(m.id)} alt="" className={cls} draggable={false}
+      style={{ transform: `rotate(${m.rot}deg)`, opacity: drag?.mon.key === m.key ? 0.3 : 1 }}
+      onPointerDown={from ? e => startDrag(e, m, from) : undefined}
     />
   )
 
@@ -292,7 +345,7 @@ export function CountMonster({ stage, difficulty }: Props) {
         <button className="count-replay" onClick={() => { sfx.uiTap(); speakPrompt(q) }} aria-label="もういちど きく">🔊</button>
       </div>
 
-      <div className="count-body">
+      <div className="count-body" ref={dropRef}>
         {q.mode === 'make10' ? (
           // 10のおうち（テンフレーム）。箱は薄く、モンスターははっきり見せる
           <div className="ten-home">
@@ -306,10 +359,10 @@ export function CountMonster({ stage, difficulty }: Props) {
             })}
           </div>
         ) : (
-          // かぞえる / ふえる・へる: あつめた群れ（箱なし・自由に散らす）
+          // かぞえる / ふえる・へる: あつめた群れ（箱なし・自由に散らす・スライドで動かす）
           <div className="count-herd" aria-label="あつめた モンスター">
-            {collected.length === 0 && <span className="count-herd-empty">ここに あつまるよ</span>}
-            {collected.map(m => monImg(m, 'count-mon', q.release ? () => release(m) : () => putBack(m)))}
+            {collected.length === 0 && <span className="count-herd-empty">ここに スライドして あつめよう</span>}
+            {collected.map(m => monImg(m, 'count-mon', 'herd'))}
           </div>
         )}
       </div>
@@ -318,21 +371,25 @@ export function CountMonster({ stage, difficulty }: Props) {
       <div className="count-actions">
         {phase === 'collecting' && q.mode === 'count' && (
           <>
+            <p className="count-hint">↑ うえに スライドして あつめよう</p>
             <div className="count-pool">
-              {pool.map(m => monImg(m, 'pool-mon', () => grab(m)))}
+              {pool.map(m => monImg(m, 'pool-mon', 'pool'))}
             </div>
             <button className="big-button count-done" onClick={checkCount}>✋ できた！</button>
           </>
         )}
 
         {phase === 'collecting' && q.mode === 'addsub' && !q.release && (
-          <div className="count-pool">
-            {pool.map(m => monImg(m, 'pool-mon', () => grab(m)))}
-          </div>
+          <>
+            <p className="count-hint">↑ うえに スライドして あつめよう</p>
+            <div className="count-pool">
+              {pool.map(m => monImg(m, 'pool-mon', 'pool'))}
+            </div>
+          </>
         )}
 
         {phase === 'collecting' && q.mode === 'addsub' && q.release && (
-          <p className="count-hint">モンスターを タップして {q.need}こ にがそう</p>
+          <p className="count-hint">モンスターを そとに スライドして {q.need}こ にがそう</p>
         )}
 
         {phase === 'collecting' && q.mode === 'make10' && (
@@ -365,6 +422,14 @@ export function CountMonster({ stage, difficulty }: Props) {
           <span key={i} className={i < round ? 'done' : i === round ? 'now' : ''}>●</span>
         ))}
       </div>
+
+      {/* ドラッグ中のモンスター（指の位置に追従。少し大きく表示） */}
+      {drag && (
+        <img
+          className="count-mon drag-ghost" src={monsterImageUrl(drag.mon.id)} alt="" draggable={false}
+          style={{ left: drag.x, top: drag.y }}
+        />
+      )}
     </div>
   )
 }

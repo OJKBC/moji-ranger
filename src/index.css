@@ -1543,13 +1543,17 @@ body {
   padding: 8px;
 }
 .count-herd-empty { color: rgba(255, 255, 255, 0.6); font-size: clamp(15px, 2.4vh, 20px); font-weight: bold; }
-/* 共通のモンスター見た目（透過に埋もれないよう濃いめの影で輪郭を出す・箱に入れない） */
+/* 共通のモンスター見た目: 大きく＋うっすら透過した四角の下じきで、背景に埋もれず見やすく */
 .count-mon {
-  width: clamp(72px, 17vw, 128px);
-  height: clamp(72px, 17vw, 128px);
+  width: clamp(84px, 21vw, 150px);
+  height: clamp(84px, 21vw, 150px);
   object-fit: contain;
-  cursor: pointer;
-  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.65)) drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
+  padding: 6px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.22);
+  cursor: grab;
+  touch-action: none; /* スライド中にページがスクロール/ズームしないように */
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.55));
   animation: monPop 0.26s ease-out;
 }
 @keyframes monPop { from { transform: scale(0.3); opacity: 0; } }
@@ -1599,14 +1603,28 @@ body {
   max-width: 100%;
 }
 .pool-mon {
-  width: clamp(78px, 18vw, 132px);
-  height: clamp(78px, 18vw, 132px);
+  width: clamp(90px, 22vw, 156px);
+  height: clamp(90px, 22vw, 156px);
   object-fit: contain;
-  cursor: pointer;
-  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.65)) drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
+  padding: 6px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.22);
+  cursor: grab;
+  touch-action: none;
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.55));
   transition: transform 0.08s;
 }
-.pool-mon:active { transform: translateY(3px) scale(0.94); }
+.pool-mon:active { transform: scale(1.06); cursor: grabbing; }
+
+/* スライド中に指へ追従するモンスター（少し大きく・最前面） */
+.drag-ghost {
+  position: fixed;
+  z-index: 200;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(1.15);
+  animation: none;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.4);
+}
 
 .count-done { padding: 14px 44px; }
 .count-hint { font-size: clamp(16px, 2.6vh, 22px); font-weight: bold; color: #fff; text-shadow: 0 2px 5px rgba(0,0,0,0.5); }
