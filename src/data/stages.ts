@@ -1,4 +1,5 @@
 import type { Hero, Stage, StageCategory } from '../types'
+import { MAX_DIFFICULTY } from '../types'
 import { HIRAGANA_POOL, KATAKANA_POOL } from './kana'
 import { COUNTRY_ORDER } from './countries'
 
@@ -147,29 +148,32 @@ export const STAGES: Stage[] = [
   // かぞえて系（暗算不要の入口）。たしざん/ひきざんバトルの「手前」に3ステージ。
   // mode:'count' は Phaser でなく React 画面（CountMonster）で動く。モードはステージ固定・難易度で数を大きく。
   {
-    id: 'count-monster', // かぞえる
+    id: 'count-monster', // かぞえる（難易度3段階）
     title: 'かぞえて モンスター',
     type: 'math', mode: 'count', countMode: 'count', category: 'math',
+    maxDifficulty: 3,
     recommendedAgeMin: 4, recommendedAgeMax: 6,
     missionText: 'かぞえて モンスターを あつめよう！',
     voicePrompts: [], correctKind: 'number', distractors: [],
     rounds: 5, targetsPerRound: 1, reward: 1, difficulty: 1,
   },
   {
-    id: 'count-addsub', // ふえる・へる（合体/分裂）
+    id: 'count-addsub', // ふえる・へる（難易度3段階）
     title: 'ふえる・へる',
     type: 'math', mode: 'count', countMode: 'addsub', category: 'math',
+    maxDifficulty: 3,
     recommendedAgeMin: 5, recommendedAgeMax: 6,
-    missionText: 'あつめたり にがしたり して かぞえよう！',
+    missionText: 'ふえたり へったり すると なんこ？',
     voicePrompts: [], correctKind: 'number', distractors: [],
     rounds: 5, targetsPerRound: 1, reward: 1, difficulty: 1,
   },
   {
-    id: 'count-make10', // 10をつくる（10の合成）
-    title: '10を つくろう',
+    id: 'count-make10', // すうじをつくろう（目標を段階的に大きく・5段階）
+    title: 'すうじを つくろう',
     type: 'math', mode: 'count', countMode: 'make10', category: 'math',
+    maxDifficulty: 5,
     recommendedAgeMin: 5, recommendedAgeMax: 6,
-    missionText: 'あと なんこで 10 かな？',
+    missionText: 'すうじを つくろう！',
     voicePrompts: [], correctKind: 'number', distractors: [],
     rounds: 5, targetsPerRound: 1, reward: 1, difficulty: 1,
   },
@@ -435,6 +439,11 @@ export function stagesInCategory(category: StageCategory): Stage[] {
   // ㊿「よむ」は常に表示する。音声認識が使えない端末（①⑩）では「はなす」ボタンを出さず、
   //   タップで読めたことにして遊べる（Ride25DScene 側でフォールバック）。
   return STAGES.filter(s => !s.hidden && categoryOf(s) === category)
+}
+
+/** そのステージの最大難易度（省略時は全体の MAX_DIFFICULTY）。かぞえて系は少なめ */
+export function maxDifficultyOf(stage: Stage | undefined): number {
+  return stage?.maxDifficulty ?? MAX_DIFFICULTY
 }
 
 /** 指定ステージの次のステージ（最後なら null） */

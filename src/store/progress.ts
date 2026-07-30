@@ -302,9 +302,12 @@ export function clearedLevelOf(progress: PlayerProgress, stageId: string): numbe
   return progress.stageLevels[stageId] ?? 0
 }
 
-/** そのステージで次に挑戦する難易度（全クリア後は最高難易度で遊び続けられる） */
-export function nextLevelOf(progress: PlayerProgress, stageId: string): DifficultyLevel {
-  return Math.min(MAX_DIFFICULTY, clearedLevelOf(progress, stageId) + 1) as DifficultyLevel
+/**
+ * そのステージで次に挑戦する難易度（全クリア後は最高難易度で遊び続けられる）。
+ * max はステージごとの最大難易度（かぞえて系は少なめ。省略時は全体の MAX_DIFFICULTY）。
+ */
+export function nextLevelOf(progress: PlayerProgress, stageId: string, max: number = MAX_DIFFICULTY): DifficultyLevel {
+  return Math.min(max, clearedLevelOf(progress, stageId) + 1) as DifficultyLevel
 }
 
 // ---- なかまボール（捕獲）関連 ----

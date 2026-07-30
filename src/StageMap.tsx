@@ -1,13 +1,9 @@
 import { useState } from 'react'
-import { stagesInCategory, CATEGORY_META } from './data/stages'
+import { stagesInCategory, CATEGORY_META, maxDifficultyOf } from './data/stages'
 import { clearedLevelOf, isStageUnlocked, loadProgress, nextLevelOf } from './store/progress'
 import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
-import { MAX_DIFFICULTY } from './types'
 import type { DifficultyLevel, Stage, StageCategory } from './types'
-
-/** 難易度バッジの並び（1..最高難易度） */
-const LEVELS = Array.from({ length: MAX_DIFFICULTY }, (_, i) => i + 1)
 
 /** ステージごとの見た目（マップノードの絵文字） */
 const STAGE_ICONS: Record<string, string> = {
@@ -63,7 +59,7 @@ export function StageMap({ category, onSelect, onBack, onZukan, onWorldZukan, re
     sfx.uiTap()
     // つづき（次の挑戦難易度）が1より上＝一度クリアしている → どこから始めるか選ばせる。
     // 前回の高い難易度に強制されず、いつでも「さいしょから（レベル1）」に戻れるようにする。
-    const cont = nextLevelOf(progress, stage.id)
+    const cont = nextLevelOf(progress, stage.id, maxDifficultyOf(stage))
     if (cont > 1) {
       voice.speak('さいしょから？ つづきから？')
       setChooser({ stage, cont })
@@ -135,7 +131,7 @@ export function StageMap({ category, onSelect, onBack, onZukan, onWorldZukan, re
                 <span className="path-node-icon">{unlocked ? STAGE_ICONS[stage.id] ?? '⭐' : '🔒'}</span>
                 <span className="path-node-name">{stage.title}</span>
                 <span className="stage-levels">
-                  {LEVELS.map(n => (
+                  {Array.from({ length: maxDifficultyOf(stage) }, (_, k) => k + 1).map(n => (
                     <span
                       key={n}
                       className={

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { EventBus } from './EventBus'
 import { PhaserGame } from './game/PhaserGame'
-import { STAGES, categoryOf, makeReviewStage } from './data/stages'
+import { STAGES, categoryOf, makeReviewStage, maxDifficultyOf } from './data/stages'
 import { StageMap } from './StageMap'
 import { isSpeechSupported } from './speech'
 import { CategoryScreen } from './CategoryScreen'
@@ -14,7 +14,6 @@ const CountryIntro = lazy(() => import('./CountryIntro').then(m => ({ default: m
 import { REVIEW_MIN_WEAK, canClaimBonus, isStageUnlocked, loadProgress, weakKanaForReview } from './store/progress'
 import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
-import { MAX_DIFFICULTY } from './types'
 import type { DifficultyLevel, Stage, StageCategory, StageResult } from './types'
 import bgUrl from './assets/bg.jpg'
 
@@ -40,7 +39,8 @@ interface StageFailed {
 function nextChallengeOf(result: StageResult): { stage: Stage; level: DifficultyLevel } | null {
   const stage = STAGES.find(s => s.id === result.stageId)
   if (!stage) return null
-  if (result.difficulty < MAX_DIFFICULTY) {
+  // そのステージの最大難易度まではレベルアップ（かぞえて系は少なめ）。超えたら次のステージへ
+  if (result.difficulty < maxDifficultyOf(stage)) {
     return { stage, level: (result.difficulty + 1) as DifficultyLevel }
   }
   const progress = loadProgress()

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { EventBus } from './EventBus'
-import { countSpec, TEN_FRAME_SIZE } from './data/counting'
+import { countSpec } from './data/counting'
 import type { CountMode, CountSpec } from './data/counting'
 import { STRONG_MONSTER_IDS, WEAK_MONSTER_IDS, monsterImageUrl } from './data/monsterNames'
 import { recordAnswer, recordStageClear } from './store/progress'
@@ -14,33 +14,31 @@ interface Props {
   difficulty: DifficultyLevel
 }
 
-type Phase = 'collecting' | 'answering' | 'correct' | 'wrong' | 'done'
+type Phase = 'showing' | 'collecting' | 'answering' | 'correct' | 'wrong' | 'done'
 
-/** 1匹ぶんのモンスター（種類はバラバラ・見た目に少し傾きをつけて散らす） */
+/** 1匹ぶんのモンスター（種類はバラバラ・少し傾けて散らす） */
 interface Mon { key: number; id: string; rot: number }
 
 let monKey = 0
 const rand = (min: number, max: number) => min + Math.floor(Math.random() * (max - min + 1))
-/** 数字の読み（1〜10。count/addsub/make10 の数はこの範囲）。読み上げ用トークン */
-const READ: Record<number, string> = { 1: 'いち', 2: 'に', 3: 'さん', 4: 'よん', 5: 'ご', 6: 'ろく', 7: 'なな', 8: 'はち', 9: 'きゅう', 10: 'じゅう' }
+/** 数字の読み（1〜20） */
+const READ: Record<number, string> = {
+  1: 'いち', 2: 'に', 3: 'さん', 4: 'よん', 5: 'ご', 6: 'ろく', 7: 'なな', 8: 'はち', 9: 'きゅう', 10: 'じゅう',
+  11: 'じゅう いち', 12: 'じゅう に', 13: 'じゅう さん', 14: 'じゅう よん', 15: 'じゅう ご',
+  16: 'じゅう ろく', 17: 'じゅう なな', 18: 'じゅう はち', 19: 'じゅう きゅう', 20: 'に じゅう',
+}
 const rn = (n: number) => READ[n] ?? String(n)
 function shuffle<T>(a: T[]): T[] { const r = [...a]; for (let i = r.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[r[i], r[j]] = [r[j], r[i]] } return r }
 
-/** つよい・よわい両方から抽選する種プール（1ゲーム内でもバラバラに出る） */
+/** つよい・よわい両方から抽選（1ゲーム内でもバラバラに出る） */
 const SPECIES_POOL = [...STRONG_MONSTER_IDS, ...WEAK_MONSTER_IDS]
-
-/** n匹、色々な種類のモンスターを作る（つよい・よわい混在） */
 function makeMons(n: number): Mon[] {
   const pool = shuffle(SPECIES_POOL)
-  return Array.from({ length: n }, (_, i) => ({
-    key: monKey++,
-    id: pool[i % pool.length] ?? 'monster-strong-1',
-    rot: rand(-12, 12),
-  }))
+  return Array.from({ length: n }, (_, i) => ({ key: monKey++, id: pool[i % pool.length] ?? 'monster-strong-1', rot: rand(-12, 12) }))
 }
 
-/** 答えの近傍から重複しない3択（0未満/上限超えは避ける・必ず正解を含む） */
-function numberChoices(answer: number, lo = 0, hi = 10): number[] {
+/** 答えの近傍から重複しない3択（必ず正解を含む） */
+function numberChoices(answer: number, lo = 0, hi = 20): number[] {
   const set = new Set<number>([answer])
   for (const c of shuffle([answer - 1, answer + 1, answer - 2, answer + 2])) {
     if (set.size >= 3) break
@@ -54,109 +52,120 @@ function numberChoices(answer: number, lo = 0, hi = 10): number[] {
 interface Question {
   mode: CountMode
   prompt: string
-  /** 読み上げ文（数字も含めて全部読む。voice.speak が 、で区切ってクリップ連結） */
   speak: string
   /** 正解の数 */
   answer: number
-  /** テンフレームに最初からいる数（make10 のプレフィル） */
+  /** count: あつめる目標 / addsub: 最初にいる数 / make10: 最初にいる数 */
   base: number
-  /** count: あつめる目標 / addsub-add: 追加する数 / addsub-sub: にがす数 */
-  need: number
-  /** ひき算（テンフレーム相当のモンスターをタップして「にがす」） */
-  release: boolean
-  /** addsub の「ぜんぶで？/のこりは？」数字カード。空=できたボタン方式(count) */
+  /** addsub: ふえる/へる 数 / make10: 目標に足りない数（=answer） */
+  delta: number
+  /** addsub の増減 */
+  op: '+' | '-' | ''
+  /** make10: 作る目標の数 */
+  target: number
+  /** addsub / make10 の数字カード（count は空＝できたボタン方式） */
   choices: number[]
-  /** make10 の「かたまり」候補 */
-  chunkChoices: number[]
 }
 
-function makeQuestion(spec: CountSpec): Question {
+/** 直前と違う数になるまで数回引き直す（同じ問題ばかり出ないように） */
+function makeQuestion(spec: CountSpec, avoid: number): Question {
   if (spec.mode === 'count') {
-    const target = rand(spec.countMin, spec.countMax)
-    return {
-      mode: 'count', answer: target, base: 0, need: target, release: false,
-      choices: [], chunkChoices: [],
-      prompt: `${target}こ あつめよう！`,
-      speak: `${rn(target)}、こあつめよう`,
-    }
+    let target = rand(spec.countMin, spec.countMax)
+    for (let i = 0; i < 8 && target === avoid && spec.countMax > spec.countMin; i++) target = rand(spec.countMin, spec.countMax)
+    return { mode: 'count', answer: target, base: 0, delta: target, op: '', target, choices: [], prompt: `${target}こ あつめよう！`, speak: `${rn(target)}、こあつめよう` }
   }
   if (spec.mode === 'addsub') {
     const doSub = spec.includeSub && Math.random() < 0.5
     if (doSub) {
       const a = rand(3, Math.min(9, spec.addMax))
       const b = rand(1, a - 1)
-      return {
-        mode: 'addsub', answer: a - b, base: a, need: b, release: true,
-        choices: numberChoices(a - b, 0, 10), chunkChoices: [],
-        prompt: `${a}こ いるね。${b}こ にがそう！`,
-        speak: `${rn(a)}、こいるね、${rn(b)}、こにがそう`,
-      }
+      const ans = a - b
+      return { mode: 'addsub', answer: ans, base: a, delta: b, op: '-', target: 0, choices: numberChoices(ans, 0, 20), prompt: `ここに ${b}こ へったら なんこ？`, speak: `ここに、${rn(b)}、こへったらなんこ` }
     }
-    const a = rand(1, spec.addMax - 1)
-    const b = rand(1, Math.max(1, spec.addMax - a))
-    return {
-      mode: 'addsub', answer: a + b, base: a, need: b, release: false,
-      choices: numberChoices(a + b, 1, 10), chunkChoices: [],
-      prompt: `${a}こ いるね。もう ${b}こ あつめよう！`,
-      speak: `${rn(a)}、こいるね、もう、${rn(b)}、こあつめよう`,
-    }
+    let a = rand(1, spec.addMax - 1)
+    let b = rand(1, Math.max(1, spec.addMax - a))
+    if (a + b === avoid) { a = rand(1, spec.addMax - 1); b = rand(1, Math.max(1, spec.addMax - a)) }
+    const ans = a + b
+    return { mode: 'addsub', answer: ans, base: a, delta: b, op: '+', target: 0, choices: numberChoices(ans, 1, 20), prompt: `ここに ${b}こ ふえたら なんこ？`, speak: `ここに、${rn(b)}、こふえたらなんこ` }
   }
-  // make10
-  const prefill = rand(spec.countMin, spec.countMax)
-  const need = TEN_FRAME_SIZE - prefill
-  return {
-    mode: 'make10', answer: need, base: prefill, need, release: false,
-    choices: [], chunkChoices: numberChoices(need, 1, 9),
-    prompt: 'あと なんこで 10 かな？', speak: 'あとなんこでじゅう',
-  }
+  // make10（すうじをつくろう）: 目標 T をつくる。最初に base いて、あと need（=answer）で T。
+  // 空きマスは出さない（数えると答えが分かってしまうため）。目標 T を見て、数字カードで選ぶ。
+  let T = rand(spec.targetMin, spec.targetMax)
+  for (let i = 0; i < 8 && T === avoid && spec.targetMax > spec.targetMin; i++) T = rand(spec.targetMin, spec.targetMax)
+  const need = rand(Math.max(1, T - 10), Math.min(9, T - 1))
+  const base = T - need
+  return { mode: 'make10', answer: need, base, delta: need, op: '', target: T, choices: numberChoices(need, 1, 9), prompt: `${T}を つくろう！`, speak: `${rn(T)}、をつくろう` }
 }
 
 /**
  * かぞえて系（暗算不要）。モードはステージ固定（stage.countMode）。
- * モンスターは種類バラバラ・箱に入れず自由に散らして見やすく置く。答えの数字は大きく出さない
- * （数えさせる）。タップ時に数を読み上げない（答えバレ防止）。ライフ・スター・記録・音は既存流用。
+ * count=スライドで集める / addsub=ふえ/へりを見て数える（数字カード）/ make10=目標をつくる（数字カード・空きマス無し）。
+ * 答えの数字は大きく出さない（数えさせる）。ライフ・スター・記録・音は既存流用。
  */
 export function CountMonster({ stage, difficulty }: Props) {
   const mode: CountMode = stage.countMode ?? 'count'
   const spec = countSpec(mode, difficulty)
   const startAt = useRef(Date.now())
+  const lastAnswer = useRef(-1)
 
   const [round, setRound] = useState(0)
   const [lives, setLives] = useState(3)
   const [wrongCount, setWrongCount] = useState(0)
-  const [q, setQ] = useState<Question>(() => makeQuestion(spec))
+  const [q, setQ] = useState<Question>(() => makeQuestion(spec, -1))
   const [phase, setPhase] = useState<Phase>('collecting')
-  /** テンフレーム/あつめた場所にいるモンスター */
-  const [collected, setCollected] = useState<Mon[]>([])
-  /** タップして集めるモンスター（count / addsub-add） */
+  /** 場にいるモンスター */
+  const [herd, setHerd] = useState<Mon[]>([])
+  /** count でスライドして集めるモンスター */
   const [pool, setPool] = useState<Mon[]>([])
 
-  const speakPrompt = useCallback((question: Question) => {
-    voice.speak(question.speak)
-  }, [])
+  const speakPrompt = useCallback((question: Question) => { voice.speak(question.speak) }, [])
+
+  // タイマーは追跡して、新しい問題の開始やアンマウントで確実に消す。
+  // （StrictMode の二重マウントで「ふえる/へる」の増減が二重に適用される事故を防ぐ）
+  const timers = useRef<number[]>([])
+  const clearTimers = useCallback(() => { timers.current.forEach(id => window.clearTimeout(id)); timers.current = [] }, [])
+  const later = useCallback((fn: () => void, ms: number) => { timers.current.push(window.setTimeout(fn, ms)) }, [])
 
   const beginQuestion = useCallback((question: Question) => {
-    setPhase('collecting')
+    clearTimers()
     startAt.current = Date.now()
-    if (question.mode === 'count') {
-      setCollected([])
-      setPool(makeMons(question.need + rand(1, 3)))
-    } else if (question.mode === 'addsub') {
-      setCollected(makeMons(question.base))
-      setPool(question.release ? [] : makeMons(question.need))
-    } else { // make10
-      setCollected(makeMons(question.base))
-      setPool([])
-    }
     sfx.uiTap()
-    window.setTimeout(() => speakPrompt(question), 300)
-  }, [speakPrompt])
+    if (question.mode === 'count') {
+      setHerd([])
+      setPool(makeMons(question.delta + rand(1, 3)))
+      setPhase('collecting')
+      later(() => speakPrompt(question), 300)
+    } else if (question.mode === 'addsub') {
+      // 最初に base いる → 少し待って ふえる/へる を見せる → 数字カードで答える
+      setPool([])
+      setHerd(makeMons(question.base))
+      setPhase('showing')
+      later(() => speakPrompt(question), 300)
+      later(() => {
+        // 絶対値でセットし直す（増減の二重適用を根本から防ぐ）: '+' は base+delta / '-' は base-delta
+        setHerd(h => {
+          const total = question.op === '+' ? question.base + question.delta : question.base - question.delta
+          if (h.length === total) return h
+          if (h.length < total) return [...h, ...makeMons(total - h.length)]
+          return h.slice(0, total)
+        })
+        sfx.pop()
+        setPhase('answering')
+        later(() => voice.speak('なんこ'), 500)
+      }, 1700)
+    } else { // make10（すうじをつくろう）
+      setPool([])
+      setHerd(makeMons(question.base))
+      setPhase('collecting') // 数字カードを出して待つ
+      later(() => speakPrompt(question), 300)
+    }
+  }, [speakPrompt, clearTimers, later])
 
-  useEffect(() => { beginQuestion(q) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { beginQuestion(q); return clearTimers }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (import.meta.env.DEV) {
-      ;(window as unknown as Record<string, unknown>).__countState = { difficulty, mode, round, phase, collected: collected.length }
+      ;(window as unknown as Record<string, unknown>).__countState = { difficulty, mode, round, phase, herd: herd.length, answer: q.answer, target: q.target }
     }
   })
 
@@ -176,19 +185,20 @@ export function CountMonster({ stage, difficulty }: Props) {
   }, [stage.id, difficulty, totalRounds])
 
   const nextRound = useCallback(() => {
+    lastAnswer.current = q.mode === 'make10' ? q.target : q.answer
     if (round + 1 >= totalRounds) { finish(wrongCount); return }
-    const nq = makeQuestion(spec)
+    const nq = makeQuestion(spec, lastAnswer.current)
     setRound(r => r + 1)
     setQ(nq)
     beginQuestion(nq)
-  }, [round, totalRounds, wrongCount, spec, beginQuestion, finish])
+  }, [round, totalRounds, wrongCount, spec, beginQuestion, finish, q])
 
   const onCorrect = useCallback(() => {
     sfx.sparkle()
     voice.speak('せいかい')
     setPhase('correct')
-    window.setTimeout(nextRound, 1500)
-  }, [nextRound])
+    later(nextRound, 1500)
+  }, [nextRound, later])
 
   const onWrong = useCallback(() => {
     sfx.wrong()
@@ -202,127 +212,91 @@ export function CountMonster({ stage, difficulty }: Props) {
       window.setTimeout(() => EventBus.emit('stage-failed', { stageId: stage.id, difficulty }), 800)
     } else {
       setPhase('wrong')
-      window.setTimeout(() => setPhase(q.choices.length ? 'answering' : 'collecting'), 1100)
+      later(() => setPhase(q.mode === 'count' ? 'collecting' : 'answering'), 1100)
     }
-  }, [wrongCount, lives, q, stage.id, difficulty])
+  }, [wrongCount, lives, q, stage.id, difficulty, later])
 
-  // ---- 操作 ----
-
-  // count / addsub-add: プールの1匹を「あつめる」（数は読み上げない＝答えバレ防止）
+  // ---- count: スライドで集める ----
   const grab = (m: Mon) => {
-    if (phase !== 'collecting' || q.release) return
+    if (phase !== 'collecting' || q.mode !== 'count') return
     setPool(p => p.filter(x => x.key !== m.key))
-    setCollected(c => [...c, m])
+    setHerd(c => [...c, m])
     sfx.pop()
   }
-  // count: 入れすぎたら1匹もどす（やさしく取り消し）
   const putBack = (m: Mon) => {
-    if (phase !== 'collecting' || q.release || q.mode !== 'count') return
-    setCollected(c => c.filter(x => x.key !== m.key))
+    if (phase !== 'collecting' || q.mode !== 'count') return
+    setHerd(c => c.filter(x => x.key !== m.key))
     setPool(p => [...p, m])
     sfx.uiTap()
   }
-  // addsub-sub: あつまっている1匹を「にがす」。指定数まで逃がしたら、それ以上は逃がさない
-  // （にがしすぎて先に進めなくなるのを防ぐ。やり直しは やりなおし ボタンで）
-  const release = (m: Mon) => {
-    if (phase !== 'collecting' || !q.release) return
-    if (collected.length <= q.base - q.need) return
-    setCollected(c => c.filter(x => x.key !== m.key))
-    sfx.fizzle()
-  }
-  // count: 「できた！」でちょうどか判定（罰しない＝ライフは減らさずやり直し）
   const checkCount = () => {
-    if (phase !== 'collecting') return
-    const ok = collected.length === q.answer
+    if (phase !== 'collecting' || q.mode !== 'count') return
+    const ok = herd.length === q.answer
     recordAnswer(String(q.answer), 'number', ok, Date.now() - startAt.current)
     if (ok) onCorrect()
-    else { sfx.wrong(); voice.speak('もういちどかぞえてね'); setPhase('wrong'); window.setTimeout(() => setPhase('collecting'), 1100) }
+    else { sfx.wrong(); voice.speak('もういちどかぞえてね'); setPhase('wrong'); later(() => setPhase('collecting'), 1100) }
   }
-  // addsub: 「ぜんぶで？/のこりは？」の数字カードを選ぶ（テンフレーム/群れを数えて選ぶ）
+
+  // ---- addsub: 数字カードで答える（ふえ/へり を見て数える） ----
   const pickNumber = (n: number) => {
     if (phase !== 'answering') return
     const ok = n === q.answer
     recordAnswer(String(q.answer), 'number', ok, Date.now() - startAt.current)
     if (ok) onCorrect(); else onWrong()
   }
-  // make10: かたまり（K匹）を選んで入れる → ちょうど10で成功
-  const pickChunk = (k: number) => {
-    if (phase !== 'collecting') return
-    const ok = q.base + k === TEN_FRAME_SIZE
+
+  // ---- make10（すうじをつくろう）: 数字カードで「あと なんこ」を選ぶ → 足して目標か判定 ----
+  const pickBuild = (k: number) => {
+    if (phase !== 'collecting' || q.mode !== 'make10') return
+    const ok = q.base + k === q.target
     recordAnswer(String(q.answer), 'number', ok, Date.now() - startAt.current)
-    setCollected(c => [...c, ...makeMons(k)])
+    setHerd(c => [...c, ...makeMons(k)])
     sfx.pop()
-    window.setTimeout(() => {
+    later(() => {
       if (ok) { sfx.purify(); onCorrect() }
-      else { onWrong(); setCollected(makeMons(q.base)) }
-    }, 700)
+      else { onWrong(); setHerd(makeMons(q.base)) }
+    }, 800)
   }
-  // やり直し（数え間違いをやさしく戻す）
+
   const resetRound = () => { if (phase === 'collecting' || phase === 'answering') beginQuestion(q) }
 
-  // ---- スライド（ドラッグ）操作 ----
-  // モンスターは「スライドして」動かす（タップではない）:
-  //   プール → まんなか（あつめる場所）に置く＝あつめる / まんなか → 外に出す＝もどす・にがす。
-  const dropHerdOut = (m: Mon) => { if (q.release) release(m); else if (q.mode === 'count') putBack(m) }
-  const grabRef = useRef(grab); grabRef.current = grab
-  const dropOutRef = useRef(dropHerdOut); dropOutRef.current = dropHerdOut
+  // ---- スライド（ドラッグ・count のみ） ----
   const dropRef = useRef<HTMLDivElement>(null)
+  const grabRef = useRef(grab); grabRef.current = grab
+  const putBackRef = useRef(putBack); putBackRef.current = putBack
   type Drag = { mon: Mon; from: 'pool' | 'herd'; x: number; y: number }
   const dragRef = useRef<Drag | null>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
 
   const startDrag = (e: ReactPointerEvent, m: Mon, from: 'pool' | 'herd') => {
-    if (phase !== 'collecting') return
-    if (from === 'pool' && q.release) return
-    if (from === 'herd' && !(q.release || q.mode === 'count')) return
+    if (phase !== 'collecting' || q.mode !== 'count') return
     e.preventDefault()
     const d: Drag = { mon: m, from, x: e.clientX, y: e.clientY }
-    dragRef.current = d
-    setDrag(d)
+    dragRef.current = d; setDrag(d)
   }
 
   useEffect(() => {
     const move = (e: PointerEvent) => {
       if (!dragRef.current) return
       const d = { ...dragRef.current, x: e.clientX, y: e.clientY }
-      dragRef.current = d
-      setDrag(d)
+      dragRef.current = d; setDrag(d)
     }
     const up = (e: PointerEvent) => {
       const d = dragRef.current
       if (!d) return
-      dragRef.current = null
-      setDrag(null)
+      dragRef.current = null; setDrag(null)
       const dz = dropRef.current?.getBoundingClientRect()
       const inside = !!dz && e.clientX >= dz.left && e.clientX <= dz.right && e.clientY >= dz.top && e.clientY <= dz.bottom
-      if (d.from === 'pool' && inside) grabRef.current(d.mon)        // プール→まんなか＝あつめる
-      else if (d.from === 'herd' && !inside) dropOutRef.current(d.mon) // まんなか→外＝もどす/にがす
+      if (d.from === 'pool' && inside) grabRef.current(d.mon)
+      else if (d.from === 'herd' && !inside) putBackRef.current(d.mon)
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', up)
-    return () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      window.removeEventListener('pointercancel', up)
-    }
+    return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up) }
   }, [])
 
-  // addsub: 集め終え/にがし終えたら自動で「こたえをえらぶ」へ
-  useEffect(() => {
-    if (phase !== 'collecting' || q.mode !== 'addsub') return
-    const doneCollecting = q.release ? collected.length === q.base - q.need : pool.length === 0
-    if (doneCollecting) {
-      const t = window.setTimeout(() => {
-        setPhase('answering')
-        voice.speak(q.release ? 'のこりはなんこ' : 'ぜんぶでなんこ')
-      }, 600)
-      return () => window.clearTimeout(t)
-    }
-  }, [phase, pool, collected, q])
-
   // ---- 描画 ----
-  // from を渡すとスライド（ドラッグ）で動かせる。渡さなければ動かせない（make10 の枠内など）
   const monImg = (m: Mon, cls: string, from?: 'pool' | 'herd') => (
     <img
       key={m.key} src={monsterImageUrl(m.id)} alt="" className={cls} draggable={false}
@@ -333,40 +307,29 @@ export function CountMonster({ stage, difficulty }: Props) {
 
   return (
     <div className="count-screen">
-      {/* 上段: ハート（右）。左上は App の「もどる」⬅ ボタンが重なる領域なので空ける */}
       <div className="count-topbar">
         <div className="count-hearts">
           {[0, 1, 2].map(i => <span key={i}>{i < lives ? '💖' : '🤍'}</span>)}
         </div>
       </div>
-      {/* 指示文は次の行に全幅で（⬅ と重ならないよう左を空ける）。大きな数字ヒントは出さない */}
       <div className="count-prompt">
         <span>{q.prompt}</span>
         <button className="count-replay" onClick={() => { sfx.uiTap(); speakPrompt(q) }} aria-label="もういちど きく">🔊</button>
       </div>
 
       <div className="count-body" ref={dropRef}>
-        {q.mode === 'make10' ? (
-          // 10のおうち（テンフレーム）。箱は薄く、モンスターははっきり見せる
-          <div className="ten-home">
-            {Array.from({ length: TEN_FRAME_SIZE }, (_, i) => {
-              const m = collected[i]
-              return (
-                <div key={i} className={`home-slot ${m ? 'filled' : 'empty'}`}>
-                  {m && monImg(m, 'count-mon')}
-                </div>
-              )
-            })}
+        {q.mode === 'count' ? (
+          <div className="count-herd count-dropzone" aria-label="ここに あつめる">
+            {herd.map(m => monImg(m, 'count-mon', 'herd'))}
           </div>
         ) : (
-          // かぞえる / ふえる・へる: あつめる場所＝空白の大きな四角（ここにスライドして入れる）
-          <div className="count-herd count-dropzone" aria-label="ここに あつめる">
-            {collected.map(m => monImg(m, 'count-mon', 'herd'))}
+          // addsub / make10: 場のモンスターを大きく見せる（スライドはしない・数える）
+          <div className="count-herd" aria-label="モンスター">
+            {herd.map(m => monImg(m, 'count-mon'))}
           </div>
         )}
       </div>
 
-      {/* 操作エリア */}
       <div className="count-actions">
         {phase === 'collecting' && q.mode === 'count' && (
           <>
@@ -378,24 +341,10 @@ export function CountMonster({ stage, difficulty }: Props) {
           </>
         )}
 
-        {phase === 'collecting' && q.mode === 'addsub' && !q.release && (
-          <>
-            <div className="drag-arrow" aria-hidden>⬆</div>
-            <div className="count-pool">
-              {pool.map(m => monImg(m, 'pool-mon', 'pool'))}
-            </div>
-          </>
-        )}
-
-        {phase === 'collecting' && q.mode === 'addsub' && q.release && (
-          <p className="count-hint">モンスターを そとに スライドして {q.need}こ にがそう</p>
-        )}
-
         {phase === 'collecting' && q.mode === 'make10' && (
-          // 10をつくる: 選択肢は数字カード（空いた丸を数えて、その数をえらぶ）
           <div className="count-choices">
-            {q.chunkChoices.map(k => (
-              <button key={k} className="choice-num" onClick={() => pickChunk(k)}>{k}</button>
+            {q.choices.map(n => (
+              <button key={n} className="choice-num" onClick={() => pickBuild(n)}>{n}</button>
             ))}
           </div>
         )}
@@ -422,12 +371,8 @@ export function CountMonster({ stage, difficulty }: Props) {
         ))}
       </div>
 
-      {/* ドラッグ中のモンスター（指の位置に追従。少し大きく表示） */}
       {drag && (
-        <img
-          className="count-mon drag-ghost" src={monsterImageUrl(drag.mon.id)} alt="" draggable={false}
-          style={{ left: drag.x, top: drag.y }}
-        />
+        <img className="count-mon drag-ghost" src={monsterImageUrl(drag.mon.id)} alt="" draggable={false} style={{ left: drag.x, top: drag.y }} />
       )}
     </div>
   )
