@@ -242,7 +242,9 @@ export class Ride25DScene extends Phaser.Scene {
 
   preload(): void {
     // 見た目素材は manifest 経由（public/assets/ 配下・丸ごと差し替え可能）
-    this.load.image('img-bg', assetUrl('background'))
+    // さんすう（たしざん/ひきざん）は落ち着いた背景(background2)で数字を見やすく。それ以外は通常背景。
+    const isMath = this.stageData.type === 'math' || this.stageData.type === 'number'
+    this.load.image('img-bg', isMath ? `${import.meta.env.BASE_URL}assets/background2.jpg` : assetUrl('background'))
     this.load.image('img-bubble', assetUrl('bubble'))
     this.load.image('img-hand-l', assetUrl('leftHand'))
     this.load.image('img-hand-r', assetUrl('rightHand'))

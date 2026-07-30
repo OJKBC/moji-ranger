@@ -188,8 +188,13 @@ export default function App() {
     : null
   const isReviewResult = result?.stageId === 'review-jp'
 
+  // さんすうのステージ（かぞえて系 React ＋ たしざん/ひきざん）は、モンスターや数字が
+  // 見やすいように落ち着いた背景(background2)にする。それ以外は通常の背景。
+  const useMathBg = screen === 'game' && (stage.type === 'math' || stage.type === 'number')
+  const appBg = useMathBg ? `${import.meta.env.BASE_URL}assets/background2.jpg` : bgUrl
+
   return (
-    <div className="app" style={{ backgroundImage: `url(${bgUrl})` }}>
+    <div className="app" style={{ backgroundImage: `url(${appBg})` }}>
       {screen === 'title' && (
         <div className="overlay-screen title-screen">
           {/* 登場モンスターがお出迎え（中央につよい・両脇によわい） */}

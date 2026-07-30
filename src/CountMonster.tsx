@@ -359,9 +359,8 @@ export function CountMonster({ stage, difficulty }: Props) {
             })}
           </div>
         ) : (
-          // かぞえる / ふえる・へる: あつめた群れ（箱なし・自由に散らす・スライドで動かす）
-          <div className="count-herd" aria-label="あつめた モンスター">
-            {collected.length === 0 && <span className="count-herd-empty">ここに スライドして あつめよう</span>}
+          // かぞえる / ふえる・へる: あつめる場所＝空白の大きな四角（ここにスライドして入れる）
+          <div className="count-herd count-dropzone" aria-label="ここに あつめる">
             {collected.map(m => monImg(m, 'count-mon', 'herd'))}
           </div>
         )}
@@ -371,7 +370,7 @@ export function CountMonster({ stage, difficulty }: Props) {
       <div className="count-actions">
         {phase === 'collecting' && q.mode === 'count' && (
           <>
-            <p className="count-hint">↑ うえに スライドして あつめよう</p>
+            <div className="drag-arrow" aria-hidden>⬆</div>
             <div className="count-pool">
               {pool.map(m => monImg(m, 'pool-mon', 'pool'))}
             </div>
@@ -381,7 +380,7 @@ export function CountMonster({ stage, difficulty }: Props) {
 
         {phase === 'collecting' && q.mode === 'addsub' && !q.release && (
           <>
-            <p className="count-hint">↑ うえに スライドして あつめよう</p>
+            <div className="drag-arrow" aria-hidden>⬆</div>
             <div className="count-pool">
               {pool.map(m => monImg(m, 'pool-mon', 'pool'))}
             </div>
