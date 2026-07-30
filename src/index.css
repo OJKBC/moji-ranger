@@ -1662,6 +1662,60 @@ body {
 .chunk-monsters { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; max-width: 190px; }
 .chunk-monsters img { width: clamp(20px, 4.6vw, 32px); height: clamp(20px, 4.6vw, 32px); object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4)); }
 
+/* すうじをつくろう（バトル）: 相手＋式が遠くからズームしてくる */
+.count-battle {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 3vh, 28px);
+  position: relative;
+}
+.battle-foe {
+  width: clamp(96px, 26vw, 190px);
+  height: clamp(96px, 26vw, 190px);
+  object-fit: contain;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.6));
+  animation: foeFloat 2.2s ease-in-out infinite;
+}
+@keyframes foeFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+.count-equation {
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 2vw, 16px);
+  padding: clamp(10px, 2vh, 18px) clamp(16px, 4vw, 30px);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 3px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.count-equation.zoom { animation: eqZoom 1.6s cubic-bezier(0.2, 0.7, 0.3, 1) forwards; }
+.count-equation.here { transform: scale(1); }
+@keyframes eqZoom {
+  0% { transform: scale(0.12) translateY(-40px); opacity: 0.2; }
+  70% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); }
+}
+.eq-num, .eq-op, .eq-blank {
+  font-size: clamp(38px, 9vw, 68px);
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+  line-height: 1;
+}
+.eq-goal { color: #ffd94d; }
+.eq-blank {
+  min-width: 1.1em;
+  text-align: center;
+  color: #9ff3ff;
+  border-bottom: 5px solid #9ff3ff;
+}
+.eq-blank.ok { color: #7dff9a; border-color: #7dff9a; }
+.eq-blank.ng { color: #ff8a8a; border-color: #ff8a8a; }
+
 .count-reset {
   margin-top: 4px;
   font-size: clamp(13px, 2vh, 16px);
