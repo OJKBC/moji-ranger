@@ -144,6 +144,8 @@ export interface Stage {
   isReview?: boolean
   /** math モード: 難易度別のランダム出題パラメータ（あれば problems より優先） */
   mathLevels?: Record<number, MathLevelSpec>
+  /** すうじをつくろう: 「a ＋ ？ ＝ T」形式。難易度別の目標 T の範囲 [min,max] */
+  buildTargets?: Record<number, [number, number]>
   /** english ステージの出題種別（type: 'english' のとき必須。出題内容は src/data/english.ts） */
   enMode?: EnglishMode
   /** count ステージ（mode:'count'）のモード。かぞえる/ふえる・へる/すうじをつくろう を別ステージで固定 */

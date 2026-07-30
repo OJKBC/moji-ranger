@@ -168,14 +168,23 @@ export const STAGES: Stage[] = [
     rounds: 5, targetsPerRound: 1, reward: 1, difficulty: 1,
   },
   {
-    id: 'count-make10', // すうじをつくろう（目標を段階的に大きく・5段階）
+    // すうじをつくろう（「a ＋ ？ ＝ T」バトル）。にほんご等と同じ 2.5D エンジン
+    // （両手＋ビーム・道中のよわい敵→ボス→なかまボール）で、答えの数字バブルを撃つ。
+    id: 'count-make10', // 内部キーは変更しない（既存クリア進捗を引き継ぐ）
     title: 'すうじを つくろう',
-    type: 'math', mode: 'count', countMode: 'make10', category: 'math',
+    type: 'math', mode: 'math', renderer: '2.5d', category: 'math',
     maxDifficulty: 5,
     recommendedAgeMin: 5, recommendedAgeMax: 6,
     missionText: 'すうじを つくろう！',
-    voicePrompts: [], correctKind: 'number', distractors: [],
-    rounds: 5, targetsPerRound: 1, reward: 1, difficulty: 1,
+    voicePrompts: [],
+    correctKind: 'number', distractors: [],
+    battle: {
+      enemyCount: 3, purifyStepsPerEnemy: 1, bossPurifySteps: 3,
+      choiceCount: 3, rideDistance: 50, letterPool: [], poolStart: 0,
+    },
+    // 目標 T を段階的に大きく: 5〜8 → 10 → 10〜12 → 12〜15 → 15〜18
+    buildTargets: { 1: [5, 8], 2: [10, 10], 3: [10, 12], 4: [12, 15], 5: [15, 18] },
+    rounds: 6, targetsPerRound: 3, reward: 1, difficulty: 1,
   },
   {
     id: 'math-add-1', // 内部キーは変更しない（＝「たしざん」に改名しても既存クリア進捗を引き継ぐ）

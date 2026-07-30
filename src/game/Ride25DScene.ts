@@ -169,6 +169,10 @@ export class Ride25DScene extends Phaser.Scene {
   private pendingCountryDone: (() => void) | null = null
   /** math: 直前に出した式（同じ式の連続を避ける） */
   private lastMathQuestion = ''
+  /** すうじをつくろう: 表示中の式「a ＋ ？ ＝ T」（正解を撃つと消える） */
+  private equation: Phaser.GameObjects.Container | null = null
+  /** すうじをつくろう: 直前の目標 T（連続で同じ目標を避ける） */
+  private buildT = 0
   /** abc: 「A for Apple」の例単語カード（㉚。聞き取り補助＝音が不明瞭でも区別できる） */
   private questionIcon: Phaser.GameObjects.Container | null = null // ㊲ 出題中の補助アイコン（HUD内）
   private buddyId: string | null = null // ㊸ あいぼう（相棒）のモンスターID
@@ -1020,6 +1024,8 @@ export class Ride25DScene extends Phaser.Scene {
 
   /** math モード（さんすうバトル）: 問題を表示・読み上げ、答えの候補数字を撃つ */
   private startMathStep(): void {
+    // すうじをつくろう（「a ＋ ？ ＝ T」バトル）は専用の出題＋式の表示
+    if (this.stageData.buildTargets) { this.startBuildStep(); return }
     const spec = this.stageData.mathLevels?.[this.level]
     if (spec) {
       // 直前と同じ式が続かないよう、数問ぶんは引き直す（範囲が狭い難易度でも極力ばらす）
@@ -1041,6 +1047,60 @@ export class Ride25DScene extends Phaser.Scene {
       recordSeen(this.currentProblem!.question, 'math')
       this.beginStepInput()
     })
+  }
+
+  /**
+   * すうじをつくろう:「a ＋ ？ ＝ T」を出題する。相手が a を出し、T になるように ？（=答え）を撃つ。
+   * 目標 T は難易度別（buildTargets）。答え（足す数）は 1〜9、a = T - 答え（1以上）。
+   * 式を大きく表示し、「なにを たしたら T？」と読み上げる。バブルは答えの候補数字。
+   */
+  private startBuildStep(): void {
+    const [tMin, tMax] = this.stageData.buildTargets?.[this.level] ?? [10, 10]
+    let T = Phaser.Math.Between(tMin, tMax)
+    for (let i = 0; i < 6 && T === this.buildT && tMax > tMin; i++) T = Phaser.Math.Between(tMin, tMax)
+    const answer = Phaser.Math.Between(1, Math.min(9, T - 1))
+    const a = T - answer
+    this.buildT = T
+    // 選択肢（答えの近く・1〜9）
+    const choices = new Set<string>([String(answer)])
+    for (let g = 0; g < 40 && choices.size < this.tune.mathChoices; g++) {
+      const near = answer + Phaser.Math.Between(-2, 2)
+      if (near >= 1 && near <= 9) choices.add(String(near))
+    }
+    const read = (n: number) => DIGIT_READING[String(n)] ?? String(n)
+    this.currentProblem = {
+      question: `${a}+?=${T}`,
+      voicePrompt: `なにをたしたら、${read(T)}`,
+      answer: String(answer),
+      choices: [...choices],
+    }
+    this.currentTarget = this.currentProblem.answer
+    voice.speak(this.currentProblem.voicePrompt)
+    const labels = Phaser.Utils.Array.Shuffle([...this.currentProblem.choices])
+    this.time.delayedCall(this.tune.fastPrompt ? 340 : 420, () => {
+      this.showEquation(a, T)
+      this.spawnBubbleArc(labels)
+      recordSeen(this.currentProblem!.question, 'math')
+      this.beginStepInput()
+    })
+  }
+
+  /** すうじをつくろう: 「a ＋ ？ ＝ T」の式を大きく表示（遠くからズームインしてくる） */
+  private showEquation(a: number, t: number): void {
+    this.clearEquation()
+    const txt = this.add.text(0, 0, `${a}  ＋  ？  ＝  ${t}`, {
+      fontFamily: FONT, fontSize: '58px', fontStyle: 'bold', color: '#ffffff',
+    }).setOrigin(0.5).setStroke('#7a4dff', 9)
+    txt.setShadow(0, 5, 'rgba(80,40,120,0.5)', 10)
+    const bg = this.add.graphics()
+    bg.fillStyle(0x1a1040, 0.72)
+    bg.fillRoundedRect(-txt.width / 2 - 26, -50, txt.width + 52, 100, 24)
+    this.equation = this.add.container(GAME_W / 2, 92, [bg, txt]).setDepth(8100).setScale(0.1).setAlpha(0.3)
+    this.tweens.add({ targets: this.equation, scale: 1, alpha: 1, duration: 420, ease: 'Back.easeOut' })
+  }
+
+  private clearEquation(): void {
+    if (this.equation) { this.equation.destroy(); this.equation = null }
   }
 
   /**
@@ -1756,6 +1816,7 @@ export class Ride25DScene extends Phaser.Scene {
 
   private clearBubbles(): void {
     this.clearQuestionIcon()
+    this.clearEquation()
     for (const b of this.bubbles) {
       b.alive = false
       this.tweens.add({
@@ -2924,6 +2985,8 @@ export class Ride25DScene extends Phaser.Scene {
         sessionCorrect: this.sessionCorrect,
         stepActive: this.stepActive,
         hasQuestionIcon: !!this.questionIcon,
+        hasEquation: !!this.equation,
+        buildT: this.buildT,
         word: this.currentWord,      // sequence: 出題中の単語（テスト検証用）
         seq: [...this.currentSeq],   // sequence: 単語の全文字（正解になりうる文字）
       }
