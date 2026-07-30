@@ -146,6 +146,8 @@ export interface Stage {
   mathLevels?: Record<number, MathLevelSpec>
   /** english ステージの出題種別（type: 'english' のとき必須。出題内容は src/data/english.ts） */
   enMode?: EnglishMode
+  /** count ステージ（mode:'count'）のモード。かぞえる/ふえる・へる/10をつくる を別ステージで固定 */
+  countMode?: 'count' | 'addsub' | 'make10' | 'numberline'
   /** ゲームシーンの描画方式。'2.5d'=オンレール対峙 / 省略時 '2d'=固定画面（レガシー） */
   renderer?: '2d' | '2.5d'
   /** 2.5d 用: 連戦→ボスのバトル定義（推奨） */

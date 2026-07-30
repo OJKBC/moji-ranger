@@ -144,24 +144,34 @@ export const STAGES: Stage[] = [
     reward: 1,
     difficulty: 2,
   },
+  // かぞえて系（暗算不要の入口）。たしざん/ひきざんバトルの「手前」に3ステージ。
+  // mode:'count' は Phaser でなく React 画面（CountMonster）で動く。モードはステージ固定・難易度で数を大きく。
   {
-    // かぞえて モンスター（暗算不要の入口）。既存のたしざん/ひきざんバトルの「手前」に置く。
-    // mode:'count' は Phaser ではなく React 画面（CountMonster）で動く。難易度でモード開放。
-    id: 'count-monster',
+    id: 'count-monster', // かぞえる
     title: 'かぞえて モンスター',
-    type: 'math', // さんすうカテゴリ・記録は numberStats（下の count 画面で 'number' として記録）
-    mode: 'count',
-    category: 'math',
-    recommendedAgeMin: 4,
-    recommendedAgeMax: 6,
+    type: 'math', mode: 'count', countMode: 'count', category: 'math',
+    recommendedAgeMin: 4, recommendedAgeMax: 6,
     missionText: 'かぞえて モンスターを あつめよう！',
-    voicePrompts: [],
-    correctKind: 'number',
-    distractors: [],
-    rounds: 5,
-    targetsPerRound: 1,
-    reward: 1,
-    difficulty: 1,
+    voicePrompts: [], correctKind: 'number', distractors: [],
+    rounds: 5, targetsPerRound: 1, reward: 1, difficulty: 1,
+  },
+  {
+    id: 'count-addsub', // ふえる・へる（合体/分裂）
+    title: 'ふえる・へる',
+    type: 'math', mode: 'count', countMode: 'addsub', category: 'math',
+    recommendedAgeMin: 5, recommendedAgeMax: 6,
+    missionText: 'あつめたり にがしたり して かぞえよう！',
+    voicePrompts: [], correctKind: 'number', distractors: [],
+    rounds: 5, targetsPerRound: 1, reward: 1, difficulty: 1,
+  },
+  {
+    id: 'count-make10', // 10をつくる（10の合成）
+    title: '10を つくろう',
+    type: 'math', mode: 'count', countMode: 'make10', category: 'math',
+    recommendedAgeMin: 5, recommendedAgeMax: 6,
+    missionText: 'あと なんこで 10 かな？',
+    voicePrompts: [], correctKind: 'number', distractors: [],
+    rounds: 5, targetsPerRound: 1, reward: 1, difficulty: 1,
   },
   {
     id: 'math-add-1', // 内部キーは変更しない（＝「たしざん」に改名しても既存クリア進捗を引き継ぐ）

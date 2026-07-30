@@ -1517,93 +1517,101 @@ body {
 }
 .count-hearts { flex-shrink: 0; font-size: clamp(20px, 3vh, 28px); letter-spacing: 2px; }
 
-/* テンフレーム（2×5＝10の枠） */
-.count-stage {
-  display: flex;
-  align-items: center;
-  gap: clamp(10px, 3vw, 26px);
-  flex: 0 0 auto;
-}
-.tenframe {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  grid-template-rows: repeat(2, 1fr);
-  gap: clamp(4px, 1vw, 8px);
-  padding: clamp(6px, 1.4vw, 10px);
-  background: rgba(255, 255, 255, 0.14);
-  border-radius: 18px;
-  border: 3px solid rgba(255, 255, 255, 0.45);
-}
-.tf-cell {
-  width: clamp(44px, 9vw, 72px);
-  height: clamp(44px, 9vw, 72px);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.10);
-  border: 2px dashed rgba(255, 255, 255, 0.35);
+/* あつめる場所（かぞえる/ふえる・へる）: 箱なし・自由に散らす。モンスターははっきり見せる */
+.count-body {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.tf-cell.filled { background: rgba(255, 240, 200, 0.18); border-style: solid; }
-.tf-cell.need { border-color: #ffd94d; box-shadow: 0 0 10px rgba(255, 217, 77, 0.6) inset; animation: tfNeed 1.1s ease-in-out infinite; }
-@keyframes tfNeed { 50% { border-color: #fff3b0; } }
-.tf-monster { width: 90%; height: 90%; object-fit: contain; cursor: pointer; animation: tfPop 0.28s ease-out; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55)); }
-@keyframes tfPop { from { transform: scale(0.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-
-.count-now { display: flex; flex-direction: column; align-items: center; }
-.count-now-num {
-  font-size: clamp(48px, 10vh, 92px);
-  font-weight: 900;
-  color: #ffd94d;
-  text-shadow: 0 4px 0 #b8860b, 0 8px 16px rgba(0, 0, 0, 0.4);
-  line-height: 1;
+.count-herd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(2px, 1.2vw, 10px);
+  width: 100%;
+  max-height: 100%;
+  padding: 8px;
 }
-.count-need { font-size: clamp(16px, 2.4vh, 22px); font-weight: bold; color: #fff; margin-top: 4px; }
+.count-herd-empty { color: rgba(255, 255, 255, 0.6); font-size: clamp(15px, 2.4vh, 20px); font-weight: bold; }
+/* 共通のモンスター見た目（透過に埋もれないよう濃いめの影で輪郭を出す・箱に入れない） */
+.count-mon {
+  width: clamp(52px, 11vw, 88px);
+  height: clamp(52px, 11vw, 88px);
+  object-fit: contain;
+  cursor: pointer;
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.65)) drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
+  animation: monPop 0.26s ease-out;
+}
+@keyframes monPop { from { transform: scale(0.3); opacity: 0; } }
+
+/* 10のおうち（テンフレーム）: 枠は薄く、モンスターははっきり */
+.ten-home {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: clamp(6px, 1.4vw, 12px);
+  padding: clamp(8px, 1.6vw, 14px);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.home-slot {
+  width: clamp(48px, 9.5vw, 80px);
+  height: clamp(48px, 9.5vw, 80px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.home-slot.empty {
+  border-radius: 50%;
+  border: 3px dashed #ffd94d;
+  box-shadow: 0 0 8px rgba(255, 217, 77, 0.5) inset;
+  animation: tfNeed 1.2s ease-in-out infinite;
+}
+@keyframes tfNeed { 50% { border-color: #fff3b0; } }
+.home-slot .count-mon { width: 96%; height: 96%; }
 
 /* 操作エリア */
 .count-actions {
   width: 100%;
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: clamp(8px, 1.6vh, 16px);
 }
+/* えらぶモンスター（プール）: 箱に入れない・大きく・はっきり */
 .count-pool {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: clamp(6px, 1.6vw, 14px);
+  gap: clamp(8px, 2.4vw, 20px);
   max-width: 100%;
 }
-.pool-monster {
-  width: clamp(56px, 12vw, 92px);
-  height: clamp(56px, 12vw, 92px);
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  background: rgba(40, 26, 74, 0.55);
-  border-radius: 18px;
+.pool-mon {
+  width: clamp(58px, 13vw, 96px);
+  height: clamp(58px, 13vw, 96px);
+  object-fit: contain;
   cursor: pointer;
-  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.65)) drop-shadow(0 0 2px rgba(0, 0, 0, 0.5));
   transition: transform 0.08s;
-  padding: 4px;
 }
-.pool-monster:active { transform: translateY(3px) scale(0.96); }
-.pool-monster img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5)); }
-.chunk-monsters img { filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4)); }
+.pool-mon:active { transform: translateY(3px) scale(0.94); }
 
 .count-done { padding: 14px 44px; }
 .count-hint { font-size: clamp(16px, 2.6vh, 22px); font-weight: bold; color: #fff; text-shadow: 0 2px 5px rgba(0,0,0,0.5); }
 
-/* make10 の「かたまり」選択 */
-.count-chunks { display: flex; flex-wrap: wrap; justify-content: center; gap: clamp(8px, 2vw, 18px); }
+/* make10 の「かたまり」選択（数字は出さない＝数えて選ぶ） */
+.count-chunks { display: flex; flex-wrap: wrap; justify-content: center; gap: clamp(10px, 2.5vw, 22px); }
 .chunk-btn {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 10px 12px;
+  justify-content: center;
+  padding: 10px 14px;
   border: none;
   border-radius: 18px;
   background: linear-gradient(180deg, #fffdf5, #ffe9c2);
@@ -1611,9 +1619,20 @@ body {
   cursor: pointer;
 }
 .chunk-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #d6a24d; }
-.chunk-monsters { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; max-width: 160px; }
-.chunk-monsters img { width: clamp(16px, 4vw, 26px); height: clamp(16px, 4vw, 26px); object-fit: contain; }
-.chunk-num { font-size: 26px; font-weight: 900; color: #b8860b; }
+.chunk-monsters { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; max-width: 190px; }
+.chunk-monsters img { width: clamp(20px, 4.6vw, 32px); height: clamp(20px, 4.6vw, 32px); object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4)); }
+
+.count-reset {
+  margin-top: 4px;
+  font-size: clamp(13px, 2vh, 16px);
+  font-weight: bold;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  padding: 6px 18px;
+  cursor: pointer;
+}
 
 /* addsub の数字カード */
 .count-choices { display: flex; gap: clamp(10px, 3vw, 22px); }
