@@ -1240,7 +1240,16 @@ export class Ride25DScene extends Phaser.Scene {
   private startEnMeaningStep(choiceCount: number): void {
     const pool = MEANING_WORDS[this.level] ?? MEANING_WORDS[1]
     let spec: MeaningSpec
-    if (this.bossActive && this.practiced.length) {
+    if (this.stageData.isReview && this.stageData.reviewPool?.length) {
+      // ふくしゅう（えいご）: にがて単語だけを出す（意味が引ける単語に限る）
+      const flat = Object.values(MEANING_WORDS).flat()
+      const cands = this.stageData.reviewPool
+        .map(w => flat.find(m => m.word === w))
+        .filter((m): m is MeaningSpec => !!m)
+      spec = cands.length
+        ? cands[Phaser.Math.Between(0, cands.length - 1)]
+        : this.deckFor(`meaning-${this.level}`, this.uniqueBy(pool, m => m.meaning)).next(() => Math.random())
+    } else if (this.bossActive && this.practiced.length) {
       const meaning = this.pickEnglishFrom(this.practiced)
       spec = pool.find(m => m.meaning === meaning) ?? pool[Phaser.Math.Between(0, pool.length - 1)]
     } else {

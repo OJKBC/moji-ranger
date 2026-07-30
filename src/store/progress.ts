@@ -273,6 +273,31 @@ export function weakKanaForReview(max = 12): string[] {
     .map(x => x.label)
 }
 
+/**
+ * ふくしゅう（さんすう）用の「にがてな たしざん/ひきざん」を強い順に返す。
+ * 「a+b」「a-b」形式だけ（再構成できる問題のみ）。すうじをつくろう(a+?=T)は各ステージ内で復習。
+ */
+export function weakMathForReview(max = 8): string[] {
+  const p = loadProgress()
+  return Object.entries(p.mathStats)
+    .map(([label, s]) => ({ label, score: weaknessScore(s) }))
+    .filter(x => x.score > 0 && /^\d+[+-]\d+$/.test(x.label))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, max)
+    .map(x => x.label)
+}
+
+/** ふくしゅう（えいご）用の「にがてな英単語」を強い順に返す（アルファベット1文字は除く） */
+export function weakEnglishForReview(max = 8): string[] {
+  const p = loadProgress()
+  return Object.entries(p.englishStats)
+    .map(([label, s]) => ({ label, score: weaknessScore(s) }))
+    .filter(x => x.score > 0 && /^[a-z]{2,}$/i.test(x.label))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, max)
+    .map(x => x.label)
+}
+
 /** ラウンド開始時に「出題された」ことを記録する */
 export function recordSeen(label: string, kind: TargetKind | 'math'): void {
   const progress = loadProgress()

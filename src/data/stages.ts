@@ -1,4 +1,4 @@
-import type { Hero, Stage, StageCategory } from '../types'
+import type { Hero, MathProblem, Stage, StageCategory } from '../types'
 import { MAX_DIFFICULTY } from '../types'
 import { HIRAGANA_POOL, KATAKANA_POOL } from './kana'
 import { COUNTRY_ORDER } from './countries'
@@ -385,41 +385,70 @@ export const STAGES: Stage[] = [
   },
 ]
 
+const REVIEW_DIGIT: Record<string, string> = {
+  '0': 'ぜろ', '1': 'いち', '2': 'に', '3': 'さん', '4': 'よん', '5': 'ご',
+  '6': 'ろく', '7': 'なな', '8': 'はち', '9': 'きゅう', '10': 'じゅう',
+  '11': 'じゅう いち', '12': 'じゅう に', '13': 'じゅう さん', '14': 'じゅう よん',
+  '15': 'じゅう ご', '16': 'じゅう ろく', '17': 'じゅう なな', '18': 'じゅう はち',
+  '19': 'じゅう きゅう', '20': 'に じゅう',
+}
+const readDigit = (n: number) => REVIEW_DIGIT[String(n)] ?? String(n)
+
+/** 「a+b」「a-b」の文字列から、ふくしゅう用の1問（読み上げ・選択肢つき）を組み立てる */
+function reconstructMathProblem(label: string): MathProblem | null {
+  const m = label.match(/^(\d+)([+-])(\d+)$/)
+  if (!m) return null
+  const a = Number(m[1]); const op = m[2]; const b = Number(m[3])
+  const answer = op === '+' ? a + b : a - b
+  if (answer < 0) return null
+  const choices = new Set<string>([String(answer)])
+  for (let g = 0; g < 40 && choices.size < 3; g++) {
+    const near = answer + (Math.floor(Math.random() * 5) - 2)
+    if (near >= 0 && near <= 20) choices.add(String(near))
+  }
+  return {
+    question: label,
+    voicePrompt: `${readDigit(a)} ${op === '+' ? 'たす' : 'ひく'} ${readDigit(b)}、いくつ？`,
+    answer: String(answer),
+    choices: [...choices],
+  }
+}
+
 /**
- * ㊾c ふくしゅうステージ（動的生成）。にがてかなだけを出題する短めの find ステージ。
+ * ㊾c ふくしゅうステージ（動的生成）。にがて項目だけを出題する短めのステージ。
  * STAGES には入れず、にがてが溜まったときだけマップに差し込む（App / StageMap）。
+ * カテゴリ別: jp=にがてかな(find) / math=にがてなたしざん・ひきざん(problems) / en=にがて単語(meaning)。
  * クリアで star ボーナス＋特別称賛。プレイ中に正解すると にがて度が下がり、やがて消える。
  */
-export function makeReviewStage(letters: string[]): Stage {
-  const pool = letters.length ? letters : ['あ']
-  return {
-    id: 'review-jp',
-    title: 'ふくしゅう',
-    type: 'hiragana',
-    mode: 'find',
-    category: 'jp',
-    renderer: '2.5d',
-    isReview: true,
-    recommendedAgeMin: 4,
-    recommendedAgeMax: 6,
+export function makeReviewStage(category: StageCategory, labels: string[]): Stage {
+  const base = {
+    title: 'ふくしゅう', renderer: '2.5d' as const, isReview: true,
+    recommendedAgeMin: 4, recommendedAgeMax: 6,
     missionText: 'にがてを おさらい しよう！',
-    voicePrompts: [],
-    correctKind: 'hiragana', // 実際の文字種はターゲットごとに自動判定（engine 側）
-    correctAnswer: pool[0],
-    distractors: [],
-    battle: {
-      enemyCount: 3,
-      purifyStepsPerEnemy: 1,
-      bossPurifySteps: 3,
-      choiceCount: 5,
-      rideDistance: 50,
-      letterPool: pool,
-      poolStart: pool.length, // にがてだけなので全部を最初から対象にする
-    },
-    rounds: 4,
-    targetsPerRound: 3,
-    reward: 2, // 星ボーナス多め（特別ステージ）
-    difficulty: 1,
+    voicePrompts: [], distractors: [],
+    battle: { enemyCount: 3, purifyStepsPerEnemy: 1, bossPurifySteps: 3, choiceCount: 4, rideDistance: 50, letterPool: [] as string[], poolStart: 0 },
+    rounds: 4, targetsPerRound: 3, reward: 2, difficulty: 1,
+  }
+  if (category === 'math') {
+    const problems = labels.map(reconstructMathProblem).filter((p): p is MathProblem => p != null)
+    return {
+      ...base, id: 'review-math', type: 'math', mode: 'math', category: 'math',
+      correctKind: 'number',
+      problems: problems.length ? problems : [reconstructMathProblem('1+1')!],
+    }
+  }
+  if (category === 'en') {
+    return {
+      ...base, id: 'review-en', type: 'english', mode: 'find', enMode: 'meaning', category: 'en',
+      correctKind: 'hiragana', reviewPool: labels,
+    }
+  }
+  // jp（かな）
+  const pool = labels.length ? labels : ['あ']
+  return {
+    ...base, id: 'review-jp', type: 'hiragana', mode: 'find', category: 'jp',
+    correctKind: 'hiragana', correctAnswer: pool[0],
+    battle: { ...base.battle, choiceCount: 5, letterPool: pool, poolStart: pool.length },
   }
 }
 

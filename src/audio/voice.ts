@@ -201,12 +201,19 @@ class VoicePlayer {
     const clips = await Promise.all(files.map(f => this.loadClip(ctx, f)))
     if (session !== this.playSession) return // 新しい発話・キャンセルで置き換えられた
     if (clips.some(c => c === null)) return
-    if (ctx.state === 'suspended') void ctx.resume()
+    // AudioContext が suspended（iOS Safari は画面遷移でよく止まる）のときは、
+    // resume を「待ってから」スケジュールする。待たずに currentTime で予約すると、
+    // 再開までのあいだ最初のクリップの頭が切れて「フェードインして聞こえない」不具合になる。
+    if (ctx.state === 'suspended') {
+      try { await ctx.resume() } catch { /* 再開できなくてもそのまま試みる */ }
+      if (session !== this.playSession) return
+    }
     // 声は効果音より前に出す（master 0.5 × 1.6 = 実効 0.8）
     const gain = ctx.createGain()
     gain.gain.value = 1.6
     gain.connect(out)
-    let t = ctx.currentTime + 0.02
+    // 頭切れ防止に少しだけ余裕を持たせて予約する（再開直後の不安定さを吸収）
+    let t = ctx.currentTime + 0.06
     for (const clip of clips as Array<{ buf: AudioBuffer; offset: number; duration: number }>) {
       const src = ctx.createBufferSource()
       src.buffer = clip.buf

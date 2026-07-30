@@ -142,6 +142,8 @@ export interface Stage {
    * 出題はにがて項目だけ・文字種はターゲットごとに自動判定・クリアで特別称賛＋星ボーナス。
    */
   isReview?: boolean
+  /** ふくしゅう（えいご）: にがて単語のプール。isReview の english meaning でここから出題する */
+  reviewPool?: string[]
   /** math モード: 難易度別のランダム出題パラメータ（あれば problems より優先） */
   mathLevels?: Record<number, MathLevelSpec>
   /** すうじをつくろう: 「a ＋ ？ ＝ T」形式。難易度別の目標 T の範囲 [min,max] */

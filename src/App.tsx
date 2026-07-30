@@ -11,7 +11,7 @@ import { WorldZukan } from './WorldZukan'
 import { CountMonster } from './CountMonster'
 // くにの世界地図（@svg-maps/world）は大きいので、くにステージを遊ぶときだけ遅延読み込みする
 const CountryIntro = lazy(() => import('./CountryIntro').then(m => ({ default: m.CountryIntro })))
-import { REVIEW_MIN_WEAK, canClaimBonus, isStageUnlocked, loadProgress, weakKanaForReview } from './store/progress'
+import { REVIEW_MIN_WEAK, canClaimBonus, isStageUnlocked, loadProgress, weakEnglishForReview, weakKanaForReview, weakMathForReview } from './store/progress'
 import { sfx } from './audio/sfx'
 import { voice } from './audio/voice'
 import type { DifficultyLevel, Stage, StageCategory, StageResult } from './types'
@@ -181,12 +181,20 @@ export default function App() {
   }, [])
 
   const next = result ? nextChallengeOf(result) : null
-  // ㊾c にほんごの地図で、にがてかなが一定数たまったら「ふくしゅうステージ」を出す。
+  // ㊾c 各カテゴリの地図で、にがてが一定数たまったら「ふくしゅうステージ」を出す。
+  //   にほんご=にがてかな / さんすう=にがてなたしざん・ひきざん / えいご=にがて単語。
   //   クリアや習熟でにがてが減れば、再計算で自動的に消える。
-  const reviewStage = (screen === 'map' && category === 'jp')
-    ? (() => { const weak = weakKanaForReview(); return weak.length >= REVIEW_MIN_WEAK ? makeReviewStage(weak) : null })()
+  const reviewStage = screen === 'map'
+    ? (() => {
+        const weak = category === 'math' ? weakMathForReview()
+          : category === 'en' ? weakEnglishForReview()
+            : category === 'jp' ? weakKanaForReview() : []
+        // さんすう・えいごは項目が少なめなので、しきい値をやや低くして出やすくする
+        const min = category === 'jp' ? REVIEW_MIN_WEAK : 3
+        return weak.length >= min ? makeReviewStage(category, weak) : null
+      })()
     : null
-  const isReviewResult = result?.stageId === 'review-jp'
+  const isReviewResult = result?.stageId?.startsWith('review-') ?? false
 
   // さんすうのステージ（かぞえて系 React ＋ たしざん/ひきざん）は、モンスターや数字が
   // 見やすいように落ち着いた背景(background2)にする。それ以外は通常の背景。

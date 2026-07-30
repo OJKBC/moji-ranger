@@ -21,9 +21,12 @@ interface Props {
 export function CountryIntro({ code, onDone }: Props) {
   const country = countryByCode(code)
   const name = countryName(code)
-  const chars = useMemo(() => country?.characteristics ?? [], [country])
-  // いま光らせている特徴（-1=国名だけ）。読み上げに合わせて1つずつ点灯
-  const [step, setStep] = useState(-1)
+  // 雑学は3つストックしておき、そのプレイではランダムで1つだけ出す
+  const fact = useMemo(() => {
+    const cs = country?.characteristics ?? []
+    return cs.length ? cs[Math.floor(Math.random() * cs.length)] : ''
+  }, [code]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [showFact, setShowFact] = useState(false)
   const doneRef = useRef(false)
 
   const finish = () => {
@@ -34,19 +37,12 @@ export function CountryIntro({ code, onDone }: Props) {
   }
 
   useEffect(() => {
-    // 国名 → 特徴を順に読み上げ（各クリップは Nanami 音声）。最後まで出したら少し待って終了。
+    // 国名 → 雑学を1つ読み上げる。少し余韻を置いて自動で閉じる。
     const timers: ReturnType<typeof setTimeout>[] = []
     sfx.uiTap()
     voice.speakCountry(name)
-    const GAP = 2200 // 1文ぶんの間（テンポ優先）
-    chars.forEach((c, i) => {
-      timers.push(setTimeout(() => {
-        setStep(i)
-        voice.speakCountry(c)
-      }, 1200 + i * GAP))
-    })
-    // 最後の特徴のあと、少し余韻を置いて自動で閉じる
-    timers.push(setTimeout(finish, 1200 + chars.length * GAP + 1400))
+    timers.push(setTimeout(() => { setShowFact(true); if (fact) voice.speakCountry(fact) }, 1200))
+    timers.push(setTimeout(finish, 4200))
     return () => timers.forEach(clearTimeout)
     // code が変わるたびに演出を作り直す
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -74,11 +70,9 @@ export function CountryIntro({ code, onDone }: Props) {
           </div>
         </div>
 
-        {/* 特徴（読み上げに合わせて点灯。読める子のために文字も出す） */}
+        {/* 雑学（ランダムで1つ・読み上げに合わせて点灯。読める子のために文字も出す） */}
         <ul className="country-facts">
-          {chars.map((c, i) => (
-            <li key={i} className={i <= step ? 'on' : ''}>{c}</li>
-          ))}
+          <li className={showFact ? 'on' : ''}>{fact}</li>
         </ul>
 
         <button className="big-button country-intro-next" onClick={finish}>▶ つぎへ</button>
